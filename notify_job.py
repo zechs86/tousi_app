@@ -83,12 +83,19 @@ def main():
     # ntfyの本文上限(約4096バイト)対策。日本語は1文字3バイトなので余裕をみて1100文字で打ち切る。
     if len(msg) > 1100:
         msg = msg[:1100] + "…(省略)"
+
+    # 一番下にアプリURL(タップで開く)。env優先→configの順。
+    app_url = (os.environ.get("APP_URL") or getattr(config, "APP_URL", "") or "").strip()
+    if app_url:
+        msg += f"\n\n📱 アプリを開く: {app_url}"
+
     title = f"Tousi: buy{len(hits)} / risk{len(risks)}"  # ntfyのTitleは英数字のみ
 
     # トピックは環境変数(GitHub Secrets)で上書き可。無ければ config.py の値を使う。
     # Secretに改行や空白が混じってもURLが壊れないよう strip する。
     topic = (os.environ.get("NTFY_TOPIC") or "").strip() or None
-    ok = send_push(msg, title=title, tags=tags, priority="default", topic=topic)
+    ok = send_push(msg, title=title, tags=tags, priority="default", topic=topic,
+                   click=(app_url or None))  # 通知タップでアプリを開く
     print("通知 送信成功" if ok else "通知 送信失敗")
     # GitHub Actions上で失敗を検知できるよう、失敗時は異常終了
     sys.exit(0 if ok else 1)

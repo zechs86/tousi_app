@@ -152,14 +152,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 💬AI相談(チャット)は従量課金のため config.AI_CHAT_ENABLED=True の時だけ表示。
+# getattrで安全に(古いconfigでもクラッシュしない)。
+CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
 _labels = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"]
-if config.AI_CHAT_ENABLED:
+if CHAT_ON:
     _labels.append("💬 AI相談")
 _labels += ["💰 ペーパー", "📰 ニュース"]
 _tabs = st.tabs(_labels)
 _ti = iter(_tabs)
 tab_scan = next(_ti); tab_chart = next(_ti); tab_ai = next(_ti)
-tab_talk = next(_ti) if config.AI_CHAT_ENABLED else None
+tab_talk = next(_ti) if CHAT_ON else None
 tab_paper = next(_ti); tab_news = next(_ti)
 
 # ============ タブ1: スキャナー ============
@@ -362,8 +364,8 @@ with tab_ai:
                 st.caption(f"モデル: {result.get('_model','')}／使用トークン 入力{u['in']:,}・出力{u['out']:,}（参考: この1回で約数円）")
         st.caption("※AIの評価は判断材料であり、的中を保証するものではありません。最終判断はご自身で。")
 
-# ============ タブ: AI相談チャット (config.AI_CHAT_ENABLED=Trueの時だけ表示) ============
-if config.AI_CHAT_ENABLED:
+# ============ タブ: AI相談チャット (CHAT_ON=Trueの時だけ表示) ============
+if CHAT_ON:
   with tab_talk:
     st.markdown("#### 💬 AIに相談")
     st.caption("自由に質問すると、AIが必要なデータを自分で取りに行って答えます。"

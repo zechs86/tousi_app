@@ -3,6 +3,11 @@
 
 import os
 
+# --- アプリ(ダッシュボード)のURL ---
+# 通知の一番下に表示し、タップでダッシュボードが開くようにする。
+# Streamlit Cloud のアプリURL(https://〇〇〇.streamlit.app)をここに入れる。
+APP_URL = "https://tousiapp-halx5hjmpkl8fkzcyq2gqn.streamlit.app"
+
 # --- スマホ通知(ntfy) ---
 # 合言葉(トピック)は公開リポジトリに載せないため、コードに直接書きません。
 #   ① 環境変数 NTFY_TOPIC があればそれを使う(GitHub Actions の Secrets 用)
