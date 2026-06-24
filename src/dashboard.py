@@ -151,8 +151,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-tab_scan, tab_chart, tab_ai, tab_talk, tab_news = st.tabs(
-    ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析", "💬 AI相談", "📰 ニュース"])
+tab_scan, tab_chart, tab_ai, tab_talk, tab_paper, tab_news = st.tabs(
+    ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析", "💬 AI相談", "💰 ペーパー", "📰 ニュース"])
 
 # ============ タブ1: スキャナー ============
 with tab_scan:
@@ -401,7 +401,120 @@ with tab_talk:
                 st.session_state.chat_api = api
                 st.session_state.chat_display.append({"role": "assistant", "text": text, "tools": tools_used})
 
-# ============ タブ5: ニュース ============
+# ============ タブ5: ペーパートレード ============
+@st.cache_data(ttl=900, show_spinner=False)
+def last_price(code):
+    df = get_price(code, period="5d")
+    if df is None or df.empty:
+        return None
+    return float(df["Close"].iloc[-1])
+
+
+with tab_paper:
+    import paper
+    st.markdown("#### 💰 ペーパートレード（仮想資金で練習）")
+    st.caption("実弾の前に“練習売買”。仮想資金で買い/売りを記録し、成績を見られます。"
+               "※クラウドではアプリが眠ると記録が消えることがあります（手元PCでは永続）。")
+
+    pstate = paper.load()
+
+    # 保有銘柄の現在値を取得して集計
+    prices = {}
+    for code_p in pstate["positions"]:
+        prices[code_p] = last_price(code_p)
+    summ = paper.summary(pstate, prices)
+
+    pcls = "up" if summ["ret_pct"] >= 0 else "down"
+    arrow = "▲" if summ["ret_pct"] >= 0 else "▼"
+    st.markdown(f"""
+<div class="card">
+  <div class="mrow">
+    <div class="metric"><div class="m-label">総資産</div><div class="m-value">¥{summ['total']:,.0f}</div></div>
+    <div class="metric"><div class="m-label">現金</div><div class="m-value">¥{summ['cash']:,.0f}</div></div>
+    <div class="metric"><div class="m-label">評価額</div><div class="m-value">¥{summ['holdings_value']:,.0f}</div></div>
+    <div class="metric"><div class="m-label">リターン</div><div class="m-value {pcls}">{arrow}{abs(summ['ret_pct']):.1f}%</div></div>
+  </div>
+  <div style="margin-top:8px;color:#9AA6B2;font-size:.8rem">初期資金 ¥{pstate['start_cash']:,.0f}</div>
+</div>
+""", unsafe_allow_html=True)
+
+    # 保有ポジション
+    if summ["rows"]:
+        st.markdown("##### 保有ポジション")
+        for r in summ["rows"]:
+            cur = "" if r["code"].endswith(".T") else "$"
+            plcls = "up" if r["pl"] >= 0 else "down"
+            sgn = "+" if r["pl"] >= 0 else ""
+            st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">{r['name']}（{r['code']}）</span>
+    <span class="m-value {plcls}" style="font-size:1rem">{sgn}{r['pl']:,.0f}円（{sgn}{r['pl_pct']:.1f}%）</span></div>
+  <div class="sc-foot">{r['shares']}株 ／ 平均 {cur}{r['avg_cost']:,.0f} → 現在 {cur}{r['cur']:,.0f} ／ 評価額 ¥{r['value']:,.0f}</div>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st.info("まだ保有なし。下の「買う」で練習を始めましょう。")
+
+    # 売買フォーム
+    c_buy, c_sell = st.columns(2)
+    with c_buy:
+        st.markdown("##### 🟢 買う")
+        codes_b = list(UNIVERSE.keys())
+        bcode = st.selectbox("銘柄", options=codes_b, index=default_idx,
+                             format_func=lambda c: f"{UNIVERSE[c]}（{c}）", key="paper_buy_sel")
+        bp = last_price(bcode)
+        cur_b = "" if bcode.endswith(".T") else "$"
+        if bp:
+            st.caption(f"現在値 {cur_b}{bp:,.0f}")
+        bsh = st.number_input("株数", min_value=1, value=100, step=100, key="paper_buy_sh")
+        if bp:
+            st.caption(f"必要資金 ¥{bp*bsh:,.0f}")
+        if st.button("買う（仮想）", use_container_width=True, key="paper_buy_btn"):
+            if bp:
+                _, err = paper.buy(pstate, bcode, UNIVERSE[bcode], bsh, bp)
+                if err:
+                    st.error(err)
+                else:
+                    st.success(f"{UNIVERSE[bcode]} を {bsh}株 買いました（仮想）"); st.rerun()
+            else:
+                st.error("現在値が取得できませんでした。")
+    with c_sell:
+        st.markdown("##### 🔴 売る")
+        held = list(pstate["positions"].keys())
+        if not held:
+            st.caption("保有銘柄がありません。")
+        else:
+            scode = st.selectbox("銘柄", options=held,
+                                 format_func=lambda c: f"{pstate['positions'][c]['name']}（{c}）",
+                                 key="paper_sell_sel")
+            maxsh = pstate["positions"][scode]["shares"]
+            st.caption(f"保有 {maxsh}株")
+            ssh = st.number_input("株数", min_value=1, max_value=maxsh, value=maxsh, step=100, key="paper_sell_sh")
+            if st.button("売る（仮想）", use_container_width=True, key="paper_sell_btn"):
+                sp = last_price(scode)
+                if sp:
+                    _, err = paper.sell(pstate, scode, ssh, sp)
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success(f"{pstate['positions'].get(scode,{}).get('name',scode)} を {ssh}株 売りました（仮想）"); st.rerun()
+                else:
+                    st.error("現在値が取得できませんでした。")
+
+    # 履歴
+    if pstate["history"]:
+        with st.expander("📜 売買履歴"):
+            for h in pstate["history"][:20]:
+                cur_h = "" if h["code"].endswith(".T") else "$"
+                rz = f"／実現{h['realized']:+,}円" if "realized" in h else ""
+                mark = "🟢" if h["action"] == "買" else "🔴"
+                st.write(f"{mark}{h['time']} {h['name']} {h['action']} {h['shares']}株 @{cur_h}{h['price']:,.0f}{rz}")
+
+    if st.button("🗑️ ペーパー口座をリセット", key="paper_reset"):
+        paper.reset()
+        st.rerun()
+
+# ============ タブ6: ニュース ============
 with tab_news:
     codes_n = list(UNIVERSE.keys())
     code2 = st.selectbox("ニュースを見る銘柄", options=codes_n, index=default_idx,

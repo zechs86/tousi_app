@@ -6,6 +6,7 @@ __pycache__/
 # 蓄積データ(大きい・自動再生成できるのでアップしない)
 data/*.db
 data/*.sqlite
+data/*.json
 
 # OS/エディタの一時ファイル
 .DS_Store
