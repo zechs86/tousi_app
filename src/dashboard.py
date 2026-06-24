@@ -116,13 +116,17 @@ html, body, [class*="css"] {{ font-family: 'Inter','Noto Sans JP',sans-serif; }}
 
 @st.cache_data(ttl=900, show_spinner=False)
 def get_price(code, period="1y"):
-    df = yf.download(code, period=period, interval="1d", auto_adjust=True, progress=False)
-    if df is None or df.empty:
+    # yfinanceが一時的に例外を投げてもページごと落とさない(クラウドのYahoo一時エラー対策)。
+    try:
+        df = yf.download(code, period=period, interval="1d", auto_adjust=True, progress=False)
+        if df is None or df.empty:
+            return None
+        if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+            df.columns = df.columns.get_level_values(0)
+        df = df.dropna(subset=["Close"])  # 当日の未確定(NaN)バーを除外
+        return df if not df.empty else None
+    except Exception:
         return None
-    if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
-        df.columns = df.columns.get_level_values(0)
-    df = df.dropna(subset=["Close"])  # 当日の未確定(NaN)バーを除外
-    return df
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -188,8 +192,12 @@ if page == "🔎 今ここ！":
         run_scan_cached.clear()
     st.caption("買いサインが点灯した銘柄を強い順に表示（約110銘柄を分析）。")
 
-    with st.spinner("スキャン中…（初回は30秒ほど）"):
-        hits = run_scan_cached()
+    try:
+        with st.spinner("スキャン中…（初回は30秒ほど）"):
+            hits = run_scan_cached()
+    except Exception:
+        hits = []
+        st.error("スキャンに失敗しました（データ取得の一時的な不調かも）。少し待って🔄更新を押してください。")
 
     if not hits:
         st.markdown('<div class="card">😴 今日はサイン点灯銘柄なし。<br><span style="color:#9AA6B2">様子見の相場です。</span></div>', unsafe_allow_html=True)
@@ -439,10 +447,13 @@ if CHAT_ON and page == "💬 AI相談":
 # ============ タブ5: ペーパートレード ============
 @st.cache_data(ttl=900, show_spinner=False)
 def last_price(code):
-    df = get_price(code, period="5d")
-    if df is None or df.empty:
+    try:
+        df = get_price(code, period="5d")
+        if df is None or df.empty:
+            return None
+        return float(df["Close"].iloc[-1])
+    except Exception:
         return None
-    return float(df["Close"].iloc[-1])
 
 
 if page == "💰 ペーパー":
