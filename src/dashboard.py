@@ -307,33 +307,8 @@ with tab_ai:
             if df3 is None:
                 st.session_state[skey] = (None, "株価データが取得できませんでした。")
             else:
-                dfi3 = add_all_indicators(df3)
-                sig3 = judge(dfi3)
-                last3 = dfi3.iloc[-1]
-                info3 = get_info(code3)
-                rate3 = info3.get("dividendRate") or info3.get("trailingAnnualDividendRate")
-                inst3 = info3.get("heldPercentInstitutions")
-                insider3 = info3.get("heldPercentInsiders")
-                vavg3 = float(dfi3["Volume"].iloc[-21:-1].mean())
-                lo = float(df3["Close"].min())
-                hi = float(df3["Close"].max())
-                pos = round((sig3["price"] - lo) / (hi - lo) * 100) if hi > lo else None
-                snap3 = {
-                    "price": round(sig3["price"]),
-                    "chg_pct": round((sig3["price"] / dfi3["Close"].iloc[-2] - 1) * 100, 2),
-                    "trend": "上昇" if last3["SMA25"] > last3["SMA75"] else "下降",
-                    "rsi": round(sig3["rsi"]),
-                    "range_pos": f"{pos}%（0=安値,100=高値）" if pos is not None else None,
-                    "per": round(info3["trailingPE"], 1) if info3.get("trailingPE") else None,
-                    "pbr": round(info3["priceToBook"], 2) if info3.get("priceToBook") else None,
-                    "dividend_yield": round(rate3 / sig3["price"] * 100, 2) if rate3 else None,
-                    "inst_pct": round(inst3 * 100, 1) if inst3 else None,
-                    "insider_pct": round(insider3 * 100, 1) if insider3 else None,
-                    "vol_ratio": f"{float(last3['Volume'])/vavg3:.1f}倍" if vavg3 else None,
-                }
-                import news as news_mod
-                items3 = news_mod.fetch_news(name3, limit=12)
                 import ai_analysis
+                snap3, items3 = ai_analysis.gather_inputs(code3, name3, df3, get_info(code3))
                 st.session_state[skey] = ai_analysis.analyze_stock(name3, code3, snap3, items3)
 
     if skey in st.session_state:
@@ -348,6 +323,20 @@ with tab_ai:
             body += _ai_list("🛡️ 強み・堀", result.get("strengths"), "#7CE0FF")
             body += _ai_list("📈 好材料", result.get("positive_catalysts"), NEUTRAL)
             body += _ai_list("⚠️ リスク・弱点", result.get("risks"), DOWN)
+
+            def _para(label, val):
+                if not val:
+                    return ""
+                return (f'<div style="margin-top:12px"><div class="m-label" style="color:{INK}">{label}</div>'
+                        f'<div style="margin-top:4px;color:#EAF0F6;line-height:1.7">{val}</div></div>')
+
+            paras = ""
+            paras += _para("📊 業績・決算トレンド", result.get("earnings_take"))
+            paras += _para("🏛️ 機関投資家・需給", result.get("institutional_take"))
+            paras += _para("💰 割安度の所感", result.get("valuation_take"))
+            paras += _para("🎯 目標株価の所感", result.get("target_take"))
+            paras += _para("⏱️ なぜ今か（タイミング）", result.get("timing"))
+            paras += _para("📝 総合所感", result.get("overall"))
             st.markdown(f"""
 <div class="card">
   <div class="sc-top">
@@ -356,12 +345,7 @@ with tab_ai:
   </div>
   <div style="margin-top:8px;color:#EAF0F6;line-height:1.7">{result.get('summary','')}</div>
   {body}
-  <div style="margin-top:12px"><div class="m-label" style="color:{INK}">🏛️ 機関投資家・需給</div>
-    <div style="margin-top:4px;color:#EAF0F6">{result.get('institutional_take','')}</div></div>
-  <div style="margin-top:12px"><div class="m-label" style="color:{INK}">💰 割安度の所感</div>
-    <div style="margin-top:4px;color:#EAF0F6">{result.get('valuation_take','')}</div></div>
-  <div style="margin-top:12px"><div class="m-label" style="color:{INK}">📝 総合所感</div>
-    <div style="margin-top:4px;color:#EAF0F6;line-height:1.7">{result.get('overall','')}</div></div>
+  {paras}
 </div>
 """, unsafe_allow_html=True)
             u = result.get("_usage")

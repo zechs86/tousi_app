@@ -35,6 +35,8 @@ jobs:
           # トピックを秘密にしたい場合: リポジトリの Settings > Secrets に NTFY_TOPIC を登録。
           # 未登録なら config.py の値が使われます(privateリポジトリなら省略可)。
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # AIコメント用。Secrets に ANTHROPIC_API_KEY を登録すると通知にAIの一言が付く。
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # 朝の実行(UTC 23時台)は「朝」、それ以外は「夜」とラベル付け
           RUN_LABEL: ${{ github.event.schedule == '15 23 * * 0-4' && '朝' || '夜' }}
         run: python notify_job.py

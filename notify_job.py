@@ -17,10 +17,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 import config
 from scanner import scan
 from notify import send_push
+from risk import detect_risks
+import ai_analysis
 
 
 def build_message(hits):
-    """スキャン結果を、スマホで読みやすい1通の本文にまとめる。"""
+    """買いサインを、スマホで読みやすくまとめる。"""
     top = hits[: config.SCAN_TOP_N]
     lines = []
     for h in top:
@@ -34,23 +36,50 @@ def build_message(hits):
     return "\n".join(lines)
 
 
+def build_risk_message(risks):
+    """急変・下落で要注意の銘柄をまとめる。"""
+    lines = []
+    for r in risks[: config.SCAN_TOP_N]:
+        cur = "" if r["is_jp"] else "$"
+        lines.append(f"🔻{r['name']} {r['reason']}（{cur}{r['price']:,.0f}）")
+    return "\n".join(lines)
+
+
 def main():
     label = os.environ.get("RUN_LABEL", "").strip()
     prefix = f"【{label}のチェック】" if label else "【自動チェック】"
 
     print("スキャン中...")
     hits = scan()
+    print("リスク検知中...")
+    try:
+        risks = detect_risks()
+    except Exception as e:
+        print("リスク検知エラー:", e)
+        risks = []
 
-    if not hits:
-        msg = f"{prefix}今日はサイン点灯銘柄なし。様子見の相場です。"
-        title = "Tousi: no signal"
-        tags = "coffee"
-    else:
-        body = build_message(hits)
+    parts = [prefix.rstrip("】") + "】"]
+
+    if hits:
         n = min(len(hits), config.SCAN_TOP_N)
-        msg = f"{prefix}買い候補 {len(hits)}件中 上位{n}件\n\n{body}\n\n※サイン=必勝ではありません。"
-        title = f"Tousi: {len(hits)} signals"
+        parts.append(f"\n🟢 買い候補 {len(hits)}件中 上位{n}件\n{build_message(hits)}")
         tags = "chart_with_upwards_trend"
+    else:
+        parts.append("\n🟢 買いサイン点灯なし（様子見）")
+        tags = "coffee"
+
+    if risks:
+        parts.append(f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}")
+        tags = "warning"
+
+    # AIによる一言総括(APIキーがある時だけ)
+    ai = ai_analysis.comment_on_scan(hits, risks)
+    if ai:
+        parts.append(f"\n🤖 {ai}")
+
+    parts.append("\n※サイン/警告=必勝ではありません。最終判断はご自身で。")
+    msg = "\n".join(parts)
+    title = f"Tousi: buy{len(hits)} / risk{len(risks)}"  # ntfyのTitleは英数字のみ
 
     # トピックは環境変数(GitHub Secrets)で上書き可。無ければ config.py の値を使う。
     topic = os.environ.get("NTFY_TOPIC") or None
