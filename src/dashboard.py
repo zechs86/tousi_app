@@ -151,7 +151,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-tab_scan, tab_chart, tab_ai, tab_news = st.tabs(["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析", "📰 ニュース"])
+tab_scan, tab_chart, tab_ai, tab_talk, tab_news = st.tabs(
+    ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析", "💬 AI相談", "📰 ニュース"])
 
 # ============ タブ1: スキャナー ============
 with tab_scan:
@@ -353,7 +354,54 @@ with tab_ai:
                 st.caption(f"モデル: {result.get('_model','')}／使用トークン 入力{u['in']:,}・出力{u['out']:,}（参考: この1回で約数円）")
         st.caption("※AIの評価は判断材料であり、的中を保証するものではありません。最終判断はご自身で。")
 
-# ============ タブ4: ニュース ============
+# ============ タブ4: AI相談チャット ============
+with tab_talk:
+    st.markdown("#### 💬 AIに相談")
+    st.caption("自由に質問すると、AIが必要なデータを自分で取りに行って答えます。"
+               "例：「今の買い候補は？」「ソニーは成長株として買い時？」「半導体で機関投資家が買ってるのは？」")
+
+    if not config.ANTHROPIC_API_KEY:
+        st.warning("⚠️ APIキーが未設定です。`ANTHROPIC_API_KEY` を設定してください。", icon="⚠️")
+
+    st.session_state.setdefault("chat_api", [])
+    st.session_state.setdefault("chat_display", [])
+
+    if st.session_state.chat_display:
+        if st.button("🗑️ 会話をリセット"):
+            st.session_state.chat_api = []
+            st.session_state.chat_display = []
+            st.rerun()
+
+    for m in st.session_state.chat_display:
+        with st.chat_message("user" if m["role"] == "user" else "assistant"):
+            if m.get("tools"):
+                st.caption("🔧 使ったツール: " + " / ".join(m["tools"]))
+            st.markdown(m["text"])
+
+    q = st.chat_input("質問を入力…", disabled=not config.ANTHROPIC_API_KEY)
+    if q:
+        st.session_state.chat_display.append({"role": "user", "text": q})
+        st.session_state.chat_api.append({"role": "user", "content": q})
+        with st.chat_message("user"):
+            st.markdown(q)
+        with st.chat_message("assistant"):
+            tools_used = []
+            with st.spinner("AIが調べています…（データ取得で20〜40秒かかることがあります）"):
+                import ai_chat
+                text, api, err = ai_chat.respond(
+                    st.session_state.chat_api,
+                    on_tool=lambda label, inp: tools_used.append(label),
+                )
+            if err:
+                st.error(err)
+            else:
+                if tools_used:
+                    st.caption("🔧 使ったツール: " + " / ".join(tools_used))
+                st.markdown(text)
+                st.session_state.chat_api = api
+                st.session_state.chat_display.append({"role": "assistant", "text": text, "tools": tools_used})
+
+# ============ タブ5: ニュース ============
 with tab_news:
     codes_n = list(UNIVERSE.keys())
     code2 = st.selectbox("ニュースを見る銘柄", options=codes_n, index=default_idx,
