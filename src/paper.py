@@ -16,7 +16,8 @@ _PATH = os.path.join(_DIR, "paper_trades.json")
 
 
 def _new_state():
-    return {"cash": START_CASH, "start_cash": START_CASH, "positions": {}, "history": []}
+    return {"cash": START_CASH, "start_cash": START_CASH, "positions": {},
+            "history": [], "equity_curve": [], "targets": {}}
 
 
 def load():
@@ -110,6 +111,40 @@ def summary(state, prices):
     ret_pct = (total / state["start_cash"] - 1) * 100 if state["start_cash"] else 0
     return {"total": total, "cash": state["cash"], "holdings_value": holdings_value,
             "ret_pct": ret_pct, "rows": rows}
+
+
+def record_equity(state, total):
+    """今日の総資産を資産推移に記録(1日1点・同日は上書き)。"""
+    today = datetime.date.today().isoformat()
+    ec = state.setdefault("equity_curve", [])
+    if ec and ec[-1].get("date") == today:
+        ec[-1]["total"] = round(total)
+    else:
+        ec.append({"date": today, "total": round(total)})
+        if len(ec) > 400:
+            del ec[0]
+    save(state)
+
+
+def stats(state):
+    """売買成績(勝率・実現損益・回数)を集計。"""
+    realized = [h for h in state.get("history", []) if "realized" in h]
+    wins = sum(1 for h in realized if h["realized"] > 0)
+    n = len(realized)
+    total_realized = sum(h["realized"] for h in realized)
+    return {"trades": n, "wins": wins,
+            "win_rate": (wins / n * 100) if n else 0.0,
+            "total_realized": total_realized}
+
+
+def set_target(state, code, price):
+    """目標株価を設定/解除(price<=0で解除)。"""
+    tg = state.setdefault("targets", {})
+    if price and price > 0:
+        tg[code] = float(price)
+    elif code in tg:
+        del tg[code]
+    save(state)
 
 
 if __name__ == "__main__":

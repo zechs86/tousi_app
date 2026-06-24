@@ -41,9 +41,15 @@ TOOLS = [
         "description": "監視ユニバースで急落・急変(暴落)している要注意銘柄を返す。「危ない銘柄は?」「暴落してるのは?」等で使う。",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "get_my_portfolio",
+        "description": "ユーザーのペーパートレード(練習)の保有銘柄・含み損益・現金・目標株価を返す。「私の保有は?」「含み損が大きいのは?」「私のポートフォリオへの助言は?」等、ユーザー自身の持ち株に関する相談で使う。",
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
-TOOL_LABEL = {"get_stock": "📊 銘柄データ取得", "scan_market": "🔎 全体スキャン", "market_risks": "⚠️ リスク検知"}
+TOOL_LABEL = {"get_stock": "📊 銘柄データ取得", "scan_market": "🔎 全体スキャン",
+              "market_risks": "⚠️ リスク検知", "get_my_portfolio": "💰 保有ポートフォリオ"}
 
 
 def _client():

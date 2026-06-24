@@ -151,8 +151,16 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-tab_scan, tab_chart, tab_ai, tab_talk, tab_paper, tab_news = st.tabs(
-    ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析", "💬 AI相談", "💰 ペーパー", "📰 ニュース"])
+# 💬AI相談(チャット)は従量課金のため config.AI_CHAT_ENABLED=True の時だけ表示。
+_labels = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"]
+if config.AI_CHAT_ENABLED:
+    _labels.append("💬 AI相談")
+_labels += ["💰 ペーパー", "📰 ニュース"]
+_tabs = st.tabs(_labels)
+_ti = iter(_tabs)
+tab_scan = next(_ti); tab_chart = next(_ti); tab_ai = next(_ti)
+tab_talk = next(_ti) if config.AI_CHAT_ENABLED else None
+tab_paper = next(_ti); tab_news = next(_ti)
 
 # ============ タブ1: スキャナー ============
 with tab_scan:
@@ -354,8 +362,9 @@ with tab_ai:
                 st.caption(f"モデル: {result.get('_model','')}／使用トークン 入力{u['in']:,}・出力{u['out']:,}（参考: この1回で約数円）")
         st.caption("※AIの評価は判断材料であり、的中を保証するものではありません。最終判断はご自身で。")
 
-# ============ タブ4: AI相談チャット ============
-with tab_talk:
+# ============ タブ: AI相談チャット (config.AI_CHAT_ENABLED=Trueの時だけ表示) ============
+if config.AI_CHAT_ENABLED:
+  with tab_talk:
     st.markdown("#### 💬 AIに相談")
     st.caption("自由に質問すると、AIが必要なデータを自分で取りに行って答えます。"
                "例：「今の買い候補は？」「ソニーは成長株として買い時？」「半導体で機関投資家が買ってるのは？」")
@@ -423,9 +432,12 @@ with tab_paper:
     for code_p in pstate["positions"]:
         prices[code_p] = last_price(code_p)
     summ = paper.summary(pstate, prices)
+    paper.record_equity(pstate, summ["total"])  # 今日の総資産を記録
+    pstats = paper.stats(pstate)
 
     pcls = "up" if summ["ret_pct"] >= 0 else "down"
     arrow = "▲" if summ["ret_pct"] >= 0 else "▼"
+    rcls = "up" if pstats["total_realized"] >= 0 else "down"
     st.markdown(f"""
 <div class="card">
   <div class="mrow">
@@ -434,9 +446,29 @@ with tab_paper:
     <div class="metric"><div class="m-label">評価額</div><div class="m-value">¥{summ['holdings_value']:,.0f}</div></div>
     <div class="metric"><div class="m-label">リターン</div><div class="m-value {pcls}">{arrow}{abs(summ['ret_pct']):.1f}%</div></div>
   </div>
-  <div style="margin-top:8px;color:#9AA6B2;font-size:.8rem">初期資金 ¥{pstate['start_cash']:,.0f}</div>
+  <div class="mrow" style="margin-top:8px">
+    <div class="metric"><div class="m-label">勝率</div><div class="m-value">{pstats['win_rate']:.0f}%</div></div>
+    <div class="metric"><div class="m-label">取引回数</div><div class="m-value">{pstats['trades']}</div></div>
+    <div class="metric"><div class="m-label">実現損益</div><div class="m-value {rcls}">{pstats['total_realized']:+,}円</div></div>
+    <div class="metric"><div class="m-label">初期資金</div><div class="m-value">¥{pstate['start_cash']:,.0f}</div></div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
+
+    ec = pstate.get("equity_curve", [])
+    if len(ec) >= 2:
+        fige = go.Figure()
+        fige.add_trace(go.Scatter(x=[e["date"] for e in ec], y=[e["total"] for e in ec],
+                                  name="総資産", line=dict(color=UP, width=2), fill="tozeroy",
+                                  fillcolor="rgba(0,224,164,.08)"))
+        fige.add_hline(y=pstate["start_cash"], line_dash="dash", line_color=INK, opacity=.5)
+        fige.update_layout(template="plotly_dark", height=200, margin=dict(l=0, r=0, t=8, b=0),
+                           paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                           font=dict(color="#EAF0F6"), showlegend=False)
+        fige.update_xaxes(gridcolor="rgba(255,255,255,.05)")
+        fige.update_yaxes(gridcolor="rgba(255,255,255,.05)")
+        st.caption("資産推移（点線＝初期資金）")
+        st.plotly_chart(fige, use_container_width=True)
 
     # 保有ポジション
     if summ["rows"]:
@@ -445,13 +477,33 @@ with tab_paper:
             cur = "" if r["code"].endswith(".T") else "$"
             plcls = "up" if r["pl"] >= 0 else "down"
             sgn = "+" if r["pl"] >= 0 else ""
+            tgt = pstate.get("targets", {}).get(r["code"])
+            tgt_line = ""
+            if tgt:
+                if r["cur"] >= tgt:
+                    tgt_line = f'<div class="sc-foot" style="color:{UP}">🎯 目標 {cur}{tgt:,.0f} 到達！利確を検討</div>'
+                else:
+                    rem = (tgt / r["cur"] - 1) * 100
+                    tgt_line = f'<div class="sc-foot">🎯 目標 {cur}{tgt:,.0f}（あと+{rem:.1f}%）</div>'
             st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">{r['name']}（{r['code']}）</span>
     <span class="m-value {plcls}" style="font-size:1rem">{sgn}{r['pl']:,.0f}円（{sgn}{r['pl_pct']:.1f}%）</span></div>
   <div class="sc-foot">{r['shares']}株 ／ 平均 {cur}{r['avg_cost']:,.0f} → 現在 {cur}{r['cur']:,.0f} ／ 評価額 ¥{r['value']:,.0f}</div>
+  {tgt_line}
 </div>
 """, unsafe_allow_html=True)
+
+        with st.expander("🎯 目標株価を設定"):
+            tcode = st.selectbox("銘柄", options=list(pstate["positions"].keys()),
+                                 format_func=lambda c: f"{pstate['positions'][c]['name']}（{c}）",
+                                 key="paper_tgt_sel")
+            cur_t = pstate.get("targets", {}).get(tcode, 0.0)
+            tval = st.number_input("目標株価（0で解除）", min_value=0.0,
+                                   value=float(cur_t), step=10.0, key="paper_tgt_val")
+            if st.button("設定", key="paper_tgt_btn"):
+                paper.set_target(pstate, tcode, tval)
+                st.success("目標株価を設定しました。"); st.rerun()
     else:
         st.info("まだ保有なし。下の「買う」で練習を始めましょう。")
 

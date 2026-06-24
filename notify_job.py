@@ -72,10 +72,11 @@ def main():
         parts.append(f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}")
         tags = "warning"
 
-    # AIによる一言総括(APIキーがある時だけ)
-    ai = ai_analysis.comment_on_scan(hits, risks)
-    if ai:
-        parts.append(f"\n🤖 {ai}")
+    # AIによる一言総括(config.AI_NOTIFY_COMMENT=True かつ APIキーがある時だけ。既定オフ=無課金)
+    if getattr(config, "AI_NOTIFY_COMMENT", False):
+        ai = ai_analysis.comment_on_scan(hits, risks)
+        if ai:
+            parts.append(f"\n🤖 {ai}")
 
     parts.append("\n※サイン/警告=必勝ではありません。最終判断はご自身で。")
     msg = "\n".join(parts)
