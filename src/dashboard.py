@@ -151,21 +151,37 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# 💬AI相談(チャット)は従量課金のため config.AI_CHAT_ENABLED=True の時だけ表示。
-# getattrで安全に(古いconfigでもクラッシュしない)。
+# ===== ページ移動ナビ(タブ風) =====
+# 💬AI相談は従量課金のため AI_CHAT_ENABLED=True の時だけ表示(getattrで安全に)。
 CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
-_labels = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"]
-if CHAT_ON:
-    _labels.append("💬 AI相談")
-_labels += ["💰 ペーパー", "📰 ニュース"]
-_tabs = st.tabs(_labels)
-_ti = iter(_tabs)
-tab_scan = next(_ti); tab_chart = next(_ti); tab_ai = next(_ti)
-tab_talk = next(_ti) if CHAT_ON else None
-tab_paper = next(_ti); tab_news = next(_ti)
+PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "📰 ニュース"]
 
-# ============ タブ1: スキャナー ============
-with tab_scan:
+# 他のボタンからのページ移動要求(_goto)を、ナビ生成前に反映
+if "_goto" in st.session_state:
+    _g = st.session_state.pop("_goto")
+    if _g in PAGES:
+        st.session_state["nav_page"] = _g
+if st.session_state.get("nav_page") not in PAGES:
+    st.session_state["nav_page"] = PAGES[0]
+
+# ラジオをピル風に見せるCSS
+st.markdown("""<style>
+div[role="radiogroup"]{flex-direction:row;flex-wrap:wrap;gap:8px;}
+div[role="radiogroup"] label{background:#151A23;border:1px solid rgba(255,255,255,.07);
+  border-radius:999px;padding:7px 15px;margin:0;font-weight:600;}
+div[role="radiogroup"] label:has(input:checked){
+  background:linear-gradient(135deg,rgba(0,224,164,.25),rgba(108,99,255,.25));border-color:rgba(0,224,164,.5);}
+div[role="radiogroup"] label>div:first-child{display:none;}
+</style>""", unsafe_allow_html=True)
+
+page = st.radio("ページ", PAGES, horizontal=True, key="nav_page", label_visibility="collapsed")
+
+# 銘柄選択の既定(全ページ共通で使う)
+codes = list(UNIVERSE.keys())
+default_idx = codes.index("8267.T") if "8267.T" in codes else 0
+
+# ============ ページ: スキャナー ============
+if page == "🔎 今ここ！":
     cL, cR = st.columns([3, 1])
     cL.markdown("#### 全銘柄スキャン")
     if cR.button("🔄 更新", use_container_width=True):
@@ -199,11 +215,20 @@ with tab_scan:
   <div class="sc-foot">{afford}</div>
 </div>
 """, unsafe_allow_html=True)
+            if st.button(f"📝 {h['name']}をペーパーで買う準備", key=f"toscanbuy_{h['code']}",
+                         use_container_width=True):
+                sh = 100 if h["is_jp"] else 1
+                st.session_state["paper_prefill"] = {
+                    "code": h["code"], "name": h["name"], "shares": sh,
+                    "target": round(h["target"]), "stop": round(h["stop"]), "price": round(h["price"]),
+                }
+                st.session_state["paper_buy_sel"] = h["code"]
+                st.session_state["paper_buy_sh"] = sh
+                st.session_state["_goto"] = "💰 ペーパー"  # ペーパーへ移動
+                st.rerun()
 
-# ============ タブ2: 銘柄分析 ============
-with tab_chart:
-    codes = list(UNIVERSE.keys())
-    default_idx = codes.index("8267.T") if "8267.T" in codes else 0
+# ============ ページ: 銘柄分析 ============
+if page == "📊 銘柄分析":
     code = st.selectbox("銘柄を選ぶ", options=codes, index=default_idx,
                         format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
     df = get_price(code)
@@ -296,7 +321,7 @@ def _ai_list(title, items, color):
             f'<ul style="margin:6px 0 0;padding-left:20px;line-height:1.7">{lis}</ul></div>')
 
 
-with tab_ai:
+if page == "🤖 AI分析":
     st.markdown("#### 🤖 AI銘柄分析")
     st.caption("選んだ成長株を、ニュース＋ファンダからClaude(AI)が評価します。実行ごとに少額のAPI費用がかかります（1回あたり数円程度）。")
 
@@ -364,9 +389,8 @@ with tab_ai:
                 st.caption(f"モデル: {result.get('_model','')}／使用トークン 入力{u['in']:,}・出力{u['out']:,}（参考: この1回で約数円）")
         st.caption("※AIの評価は判断材料であり、的中を保証するものではありません。最終判断はご自身で。")
 
-# ============ タブ: AI相談チャット (CHAT_ON=Trueの時だけ表示) ============
-if CHAT_ON:
-  with tab_talk:
+# ============ ページ: AI相談チャット (CHAT_ON=Trueの時だけ表示) ============
+if CHAT_ON and page == "💬 AI相談":
     st.markdown("#### 💬 AIに相談")
     st.caption("自由に質問すると、AIが必要なデータを自分で取りに行って答えます。"
                "例：「今の買い候補は？」「ソニーは成長株として買い時？」「半導体で機関投資家が買ってるのは？」")
@@ -421,13 +445,22 @@ def last_price(code):
     return float(df["Close"].iloc[-1])
 
 
-with tab_paper:
+if page == "💰 ペーパー":
     import paper
     st.markdown("#### 💰 ペーパートレード（仮想資金で練習）")
     st.caption("実弾の前に“練習売買”。仮想資金で買い/売りを記録し、成績を見られます。"
                "※クラウドではアプリが眠ると記録が消えることがあります（手元PCでは永続）。")
 
     pstate = paper.load()
+
+    # 「今ここ！」から準備した買い注文の案内
+    prefill = st.session_state.get("paper_prefill")
+    if prefill:
+        cpf = "" if str(prefill["code"]).endswith(".T") else "$"
+        st.success(
+            f"🔎 『{prefill['name']}』を準備しました（{prefill['shares']}株）。"
+            f"利確 {cpf}{prefill['target']:,} ／ 損切り {cpf}{prefill['stop']:,}。"
+            f"下の「🟢 買う」で確定すると、利確・損切りも自動でセットされます。", icon="🛒")
 
     # 保有銘柄の現在値を取得して集計
     prices = {}
@@ -480,13 +513,20 @@ with tab_paper:
             plcls = "up" if r["pl"] >= 0 else "down"
             sgn = "+" if r["pl"] >= 0 else ""
             tgt = pstate.get("targets", {}).get(r["code"])
+            stp = pstate.get("stops", {}).get(r["code"])
             tgt_line = ""
             if tgt:
                 if r["cur"] >= tgt:
-                    tgt_line = f'<div class="sc-foot" style="color:{UP}">🎯 目標 {cur}{tgt:,.0f} 到達！利確を検討</div>'
+                    tgt_line = f'<div class="sc-foot" style="color:{UP}">🎯 利確目標 {cur}{tgt:,.0f} 到達！利確を検討</div>'
                 else:
                     rem = (tgt / r["cur"] - 1) * 100
-                    tgt_line = f'<div class="sc-foot">🎯 目標 {cur}{tgt:,.0f}（あと+{rem:.1f}%）</div>'
+                    tgt_line = f'<div class="sc-foot">🎯 利確目標 {cur}{tgt:,.0f}（あと+{rem:.1f}%）</div>'
+            if stp:
+                if r["cur"] <= stp:
+                    tgt_line += f'<div class="sc-foot" style="color:{DOWN}">🛑 損切りライン {cur}{stp:,.0f} 割れ！損切りを検討</div>'
+                else:
+                    dn = (1 - stp / r["cur"]) * 100
+                    tgt_line += f'<div class="sc-foot">🛑 損切りライン {cur}{stp:,.0f}（あと-{dn:.1f}%）</div>'
             st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">{r['name']}（{r['code']}）</span>
@@ -523,13 +563,22 @@ with tab_paper:
         bsh = st.number_input("株数", min_value=1, value=100, step=100, key="paper_buy_sh")
         if bp:
             st.caption(f"必要資金 ¥{bp*bsh:,.0f}")
-        if st.button("買う（仮想）", use_container_width=True, key="paper_buy_btn"):
+        # 「今ここ！」から準備された銘柄なら、確定で利確/損切りも自動セット
+        pf = st.session_state.get("paper_prefill")
+        btn_label = "買う（仮想・確定）" if (pf and pf["code"] == bcode) else "買う（仮想）"
+        if st.button(btn_label, use_container_width=True, key="paper_buy_btn"):
             if bp:
                 _, err = paper.buy(pstate, bcode, UNIVERSE[bcode], bsh, bp)
                 if err:
                     st.error(err)
                 else:
-                    st.success(f"{UNIVERSE[bcode]} を {bsh}株 買いました（仮想）"); st.rerun()
+                    msg_extra = ""
+                    if pf and pf["code"] == bcode:
+                        paper.set_target(pstate, bcode, pf["target"])  # 利確
+                        paper.set_stop(pstate, bcode, pf["stop"])       # 損切り
+                        msg_extra = f"／利確{cur_b}{pf['target']:,}・損切り{cur_b}{pf['stop']:,}も設定"
+                        st.session_state.pop("paper_prefill", None)
+                    st.success(f"{UNIVERSE[bcode]} を {bsh}株 買いました（仮想）{msg_extra}"); st.rerun()
             else:
                 st.error("現在値が取得できませんでした。")
     with c_sell:
@@ -568,10 +617,9 @@ with tab_paper:
         paper.reset()
         st.rerun()
 
-# ============ タブ6: ニュース ============
-with tab_news:
-    codes_n = list(UNIVERSE.keys())
-    code2 = st.selectbox("ニュースを見る銘柄", options=codes_n, index=default_idx,
+# ============ ページ: ニュース ============
+if page == "📰 ニュース":
+    code2 = st.selectbox("ニュースを見る銘柄", options=codes, index=default_idx,
                          format_func=lambda c: f"{UNIVERSE[c]}（{c}）", key="news_select")
     name2 = UNIVERSE[code2]
     with st.spinner("ニュース取得中…"):

@@ -17,7 +17,7 @@ _PATH = os.path.join(_DIR, "paper_trades.json")
 
 def _new_state():
     return {"cash": START_CASH, "start_cash": START_CASH, "positions": {},
-            "history": [], "equity_curve": [], "targets": {}}
+            "history": [], "equity_curve": [], "targets": {}, "stops": {}}
 
 
 def load():
@@ -138,12 +138,22 @@ def stats(state):
 
 
 def set_target(state, code, price):
-    """目標株価を設定/解除(price<=0で解除)。"""
+    """目標株価(利確)を設定/解除(price<=0で解除)。"""
     tg = state.setdefault("targets", {})
     if price and price > 0:
         tg[code] = float(price)
     elif code in tg:
         del tg[code]
+    save(state)
+
+
+def set_stop(state, code, price):
+    """損切りライン(stop)を設定/解除(price<=0で解除)。"""
+    sp = state.setdefault("stops", {})
+    if price and price > 0:
+        sp[code] = float(price)
+    elif code in sp:
+        del sp[code]
     save(state)
 
 
