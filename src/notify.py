@@ -20,7 +20,7 @@ def send_push(message, title="Tousi App", tags=None, priority=None, topic=None, 
     priority: 'max','high','default','low','min'
     click   : 通知タップで開くURL
     """
-    topic = topic or NTFY_TOPIC
+    topic = (topic or NTFY_TOPIC or "").strip()
     if not topic:
         print("NTFY_TOPIC が未設定です(config.py)")
         return False

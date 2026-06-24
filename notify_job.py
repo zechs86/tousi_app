@@ -85,7 +85,8 @@ def main():
     title = f"Tousi: buy{len(hits)} / risk{len(risks)}"  # ntfyのTitleは英数字のみ
 
     # トピックは環境変数(GitHub Secrets)で上書き可。無ければ config.py の値を使う。
-    topic = os.environ.get("NTFY_TOPIC") or None
+    # Secretに改行や空白が混じってもURLが壊れないよう strip する。
+    topic = (os.environ.get("NTFY_TOPIC") or "").strip() or None
     ok = send_push(msg, title=title, tags=tags, priority="default", topic=topic)
     print("通知 送信成功" if ok else "通知 送信失敗")
     # GitHub Actions上で失敗を検知できるよう、失敗時は異常終了
