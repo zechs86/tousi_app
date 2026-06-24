@@ -9,3 +9,4 @@ feedparser==6.0.12
 requests==2.34.2
 certifi==2026.6.17
 rich==15.0.0
+anthropic==0.111.0

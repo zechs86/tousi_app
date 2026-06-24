@@ -1,0 +1,14 @@
+# Streamlit の見た目テーマ（ダーク＋ネオン調）。ローカルでもクラウドでも適用されます。
+[theme]
+base = "dark"
+primaryColor = "#00E0A4"
+backgroundColor = "#0B0E14"
+secondaryBackgroundColor = "#151A23"
+textColor = "#EAF0F6"
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false
