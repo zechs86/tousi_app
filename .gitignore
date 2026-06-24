@@ -11,3 +11,6 @@ data/*.sqlite
 .DS_Store
 Thumbs.db
 .streamlit/secrets.toml
+
+# 手元だけの秘密(通知の合言葉など)。公開しない。
+src/secret_local.py
