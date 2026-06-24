@@ -14,3 +14,6 @@ Thumbs.db
 
 # 手元だけの秘密(通知の合言葉など)。公開しない。
 src/secret_local.py
+
+# 参考用に置いた外部コード(中島聡さんのclaude-code-main)。手元で見るだけ・リポジトリには含めない。
+claude-code-main/
