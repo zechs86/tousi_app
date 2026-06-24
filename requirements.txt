@@ -1,0 +1,11 @@
+# クラウド(Streamlit Cloud / GitHub Actions)が必要とするPythonパッケージ一覧。
+# クラウドはこのファイルを読んで自動でインストールします。バージョンはローカルに合わせて固定。
+streamlit==1.58.0
+yfinance==1.4.1
+pandas==3.0.3
+numpy==2.5.0
+plotly==6.8.0
+feedparser==6.0.12
+requests==2.34.2
+certifi==2026.6.17
+rich==15.0.0

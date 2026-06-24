@@ -1,0 +1,13 @@
+# Python仮想環境(各PCで作り直すのでアップしない)
+.venv/
+__pycache__/
+*.pyc
+
+# 蓄積データ(大きい・自動再生成できるのでアップしない)
+data/*.db
+data/*.sqlite
+
+# OS/エディタの一時ファイル
+.DS_Store
+Thumbs.db
+.streamlit/secrets.toml

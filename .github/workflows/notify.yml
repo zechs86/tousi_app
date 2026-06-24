@@ -1,0 +1,40 @@
+# 【自動通知】GitHub の無料サーバーが、決まった時刻に notify_job.py を実行します。
+# あなたのPCの電源が切れていてもOK。結果は ntfy でスマホに届きます。
+#
+# 時刻について: GitHub の cron は UTC(世界標準時)。日本(JST)は +9時間。
+#   朝 8:15 JST = 前日 23:15 UTC   (平日朝になるよう UTC では日〜木 = 0-4)
+#   夜18:30 JST =      09:30 UTC   (平日 月〜金 = 1-5)
+#   ※ GitHub の無料 cron は混雑時に数分〜十数分ずれることがあります(仕様)。
+
+name: 朝夜の自動チェック通知
+
+on:
+  schedule:
+    - cron: "15 23 * * 0-4"   # 朝8:15 JST
+    - cron: "30 9 * * 1-5"    # 夜18:30 JST
+  workflow_dispatch:           # GitHubの画面から手動実行もできるボタン
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: Python を準備
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: パッケージをインストール
+        run: pip install -r requirements.txt
+
+      - name: スキャンして通知
+        env:
+          # トピックを秘密にしたい場合: リポジトリの Settings > Secrets に NTFY_TOPIC を登録。
+          # 未登録なら config.py の値が使われます(privateリポジトリなら省略可)。
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # 朝の実行(UTC 23時台)は「朝」、それ以外は「夜」とラベル付け
+          RUN_LABEL: ${{ github.event.schedule == '15 23 * * 0-4' && '朝' || '夜' }}
+        run: python notify_job.py
