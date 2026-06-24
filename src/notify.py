@@ -34,6 +34,8 @@ def send_push(message, title="Tousi App", tags=None, priority=None, topic=None, 
         headers["Click"] = click
     try:
         r = requests.post(url, data=message.encode("utf-8"), headers=headers, timeout=20)
+        if r.status_code != 200:
+            print(f"通知エラー: HTTP {r.status_code} {r.text[:200]}")
         return r.status_code == 200
     except Exception as e:
         print("通知エラー:", e)

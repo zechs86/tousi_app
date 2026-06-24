@@ -79,6 +79,9 @@ def main():
 
     parts.append("\n※サイン/警告=必勝ではありません。最終判断はご自身で。")
     msg = "\n".join(parts)
+    # ntfyの本文上限(約4096バイト)対策。日本語は1文字3バイトなので余裕をみて1100文字で打ち切る。
+    if len(msg) > 1100:
+        msg = msg[:1100] + "…(省略)"
     title = f"Tousi: buy{len(hits)} / risk{len(risks)}"  # ntfyのTitleは英数字のみ
 
     # トピックは環境変数(GitHub Secrets)で上書き可。無ければ config.py の値を使う。
