@@ -38,7 +38,7 @@ AI_MODEL = "claude-sonnet-4-6"
 
 # AI機能のオン/オフ(Trueで有効=API課金が発生)。コスト節約のため既定オフ。
 AI_CHAT_ENABLED = False      # 💬AI相談チャット(従量課金・1問¥5〜20)。Trueでタブ表示。
-AI_NOTIFY_COMMENT = False    # 朝夜通知のAIコメント(自動で毎回課金)。Trueで付与。
+AI_NOTIFY_COMMENT = True     # 朝夜通知のAIコメント(1回約¥0.5・月¥20〜40)。Trueで付与。
 
 # APIキーの読み込み: ①環境変数 ②Streamlitのsecrets ③手元のsecret_local.py の順。
 def _load_anthropic_key():
