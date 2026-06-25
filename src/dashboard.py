@@ -184,6 +184,16 @@ page = st.radio("ページ", PAGES, horizontal=True, key="nav_page", label_visib
 codes = list(UNIVERSE.keys())
 default_idx = codes.index("8267.T") if "8267.T" in codes else 0
 
+# ===== 利用者(共有時に人ごとにペーパー/お気に入りを分ける) =====
+# URLの ?u=名前 と連動。自分のURLをブックマークすれば自分専用になる。
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = st.query_params.get("u", "")
+_uname = st.text_input("👤 あなたの名前（友人と共有する時に、各自のペーパーを分けるため）",
+                       key="user_name", placeholder="例: ken（空欄ならゲスト共用）")
+if _uname.strip() and st.query_params.get("u", "") != _uname.strip():
+    st.query_params["u"] = _uname.strip()  # URLに反映
+USER = _uname.strip() or "guest"
+
 # ============ ページ: スキャナー ============
 if page == "🔎 今ここ！":
     cL, cR = st.columns([3, 1])
@@ -238,7 +248,7 @@ if page == "🔎 今ここ！":
 # ============ ページ: 銘柄分析 ============
 if page == "📊 銘柄分析":
     import favorites
-    favs = favorites.load()
+    favs = favorites.load(USER)
     # ⭐お気に入りをワンタップ表示
     if favs:
         st.markdown("**⭐ お気に入り**")
@@ -253,9 +263,9 @@ if page == "📊 銘柄分析":
     cc1, cc2 = st.columns([4, 1])
     code = cc1.selectbox("銘柄を選ぶ", options=codes, key="chart_sel",
                          format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
-    is_f = favorites.is_fav(code)
+    is_f = favorites.is_fav(code, USER)
     if cc2.button("⭐解除" if is_f else "☆登録", key="fav_toggle", use_container_width=True):
-        favorites.toggle(code)
+        favorites.toggle(code, USER)
         st.rerun()
 
     df = get_price(code)
@@ -481,7 +491,8 @@ if page == "💰 ペーパー":
     st.caption("実弾の前に“練習売買”。仮想資金で買い/売りを記録し、成績を見られます。"
                "※クラウドではアプリが眠ると記録が消えることがあります（手元PCでは永続）。")
 
-    pstate = paper.load()
+    pstate = paper.load(USER)
+    st.caption(f"👤 {'ゲスト共用' if USER == 'guest' else USER} さんのペーパー口座")
 
     # 「今ここ！」から準備した買い注文の案内
     prefill = st.session_state.get("paper_prefill")
@@ -497,7 +508,7 @@ if page == "💰 ペーパー":
     for code_p in pstate["positions"]:
         prices[code_p] = last_price(code_p)
     summ = paper.summary(pstate, prices)
-    paper.record_equity(pstate, summ["total"])  # 今日の総資産を記録
+    paper.record_equity(pstate, summ["total"], USER)  # 今日の総資産を記録
     pstats = paper.stats(pstate)
 
     pcls = "up" if summ["ret_pct"] >= 0 else "down"
@@ -574,7 +585,7 @@ if page == "💰 ペーパー":
             tval = st.number_input("目標株価（0で解除）", min_value=0.0,
                                    value=float(cur_t), step=10.0, key="paper_tgt_val")
             if st.button("設定", key="paper_tgt_btn"):
-                paper.set_target(pstate, tcode, tval)
+                paper.set_target(pstate, tcode, tval, USER)
                 st.success("目標株価を設定しました。"); st.rerun()
     else:
         st.info("まだ保有なし。下の「買う」で練習を始めましょう。")
@@ -598,14 +609,14 @@ if page == "💰 ペーパー":
         btn_label = "買う（仮想・確定）" if (pf and pf["code"] == bcode) else "買う（仮想）"
         if st.button(btn_label, use_container_width=True, key="paper_buy_btn"):
             if bp:
-                _, err = paper.buy(pstate, bcode, UNIVERSE[bcode], bsh, bp)
+                _, err = paper.buy(pstate, bcode, UNIVERSE[bcode], bsh, bp, USER)
                 if err:
                     st.error(err)
                 else:
                     msg_extra = ""
                     if pf and pf["code"] == bcode:
-                        paper.set_target(pstate, bcode, pf["target"])  # 利確
-                        paper.set_stop(pstate, bcode, pf["stop"])       # 損切り
+                        paper.set_target(pstate, bcode, pf["target"], USER)  # 利確
+                        paper.set_stop(pstate, bcode, pf["stop"], USER)       # 損切り
                         msg_extra = f"／利確{cur_b}{pf['target']:,}・損切り{cur_b}{pf['stop']:,}も設定"
                         st.session_state.pop("paper_prefill", None)
                     st.success(f"{UNIVERSE[bcode]} を {bsh}株 買いました（仮想）{msg_extra}"); st.rerun()
@@ -626,7 +637,7 @@ if page == "💰 ペーパー":
             if st.button("売る（仮想）", use_container_width=True, key="paper_sell_btn"):
                 sp = last_price(scode)
                 if sp:
-                    _, err = paper.sell(pstate, scode, ssh, sp)
+                    _, err = paper.sell(pstate, scode, ssh, sp, USER)
                     if err:
                         st.error(err)
                     else:
@@ -644,7 +655,7 @@ if page == "💰 ペーパー":
                 st.write(f"{mark}{h['time']} {h['name']} {h['action']} {h['shares']}株 @{cur_h}{h['price']:,.0f}{rz}")
 
     if st.button("🗑️ ペーパー口座をリセット", key="paper_reset"):
-        paper.reset()
+        paper.reset(USER)
         st.rerun()
 
 # ============ ページ: ニュース ============

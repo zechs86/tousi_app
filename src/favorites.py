@@ -5,35 +5,44 @@
 # （= config.FAVORITES が“消えない基本のお気に入り”。永続させたい銘柄はそこに入れる）。
 
 import os
+import re
 import json
 
 import config
 from universe import UNIVERSE
 
 _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-_PATH = os.path.join(_DIR, "favorites.json")
 
 
-def _read_file():
+def _safe_user(user):
+    u = re.sub(r"[^0-9A-Za-z_\-ぁ-んァ-ヶー一-龠]", "_", (user or "").strip())
+    return u or "guest"
+
+
+def _path(user):
+    return os.path.join(_DIR, f"favorites_{_safe_user(user)}.json")
+
+
+def _read_file(user):
     try:
-        with open(_PATH, "r", encoding="utf-8") as f:
+        with open(_path(user), "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None  # ファイルなし
 
 
-def _save_file(lst):
+def _save_file(lst, user):
     os.makedirs(_DIR, exist_ok=True)
-    with open(_PATH, "w", encoding="utf-8") as f:
+    with open(_path(user), "w", encoding="utf-8") as f:
         json.dump(lst, f, ensure_ascii=False, indent=2)
 
 
-def load():
+def load(user="guest"):
     """お気に入りコードのリスト。ファイルが無ければ config.FAVORITES から作る。"""
-    f = _read_file()
+    f = _read_file(user)
     if f is None:
         f = [c for c in getattr(config, "FAVORITES", []) if c in UNIVERSE]
-        _save_file(f)
+        _save_file(f, user)
     # ユニバースに存在するものだけ・重複排除・順序維持
     seen, out = set(), []
     for c in f:
@@ -43,18 +52,18 @@ def load():
     return out
 
 
-def is_fav(code):
-    return code in load()
+def is_fav(code, user="guest"):
+    return code in load(user)
 
 
-def toggle(code):
+def toggle(code, user="guest"):
     """⭐の付け外し。戻り値: 更新後リスト。"""
-    f = load()
+    f = load(user)
     if code in f:
         f.remove(code)
     elif code in UNIVERSE:
         f.append(code)
-    _save_file(f)
+    _save_file(f, user)
     return f
 
 

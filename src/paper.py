@@ -6,13 +6,23 @@
 #       ずっと残したい場合は将来クラウドDBを足します。手元(PC)では永続します。
 
 import os
+import re
 import json
 import datetime
 
 START_CASH = 1_000_000  # 仮想の初期資金(円)。10万円スタートの練習なら下げてもOK。
 
 _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-_PATH = os.path.join(_DIR, "paper_trades.json")
+
+
+def _safe_user(user):
+    """ファイル名に使える形に。空なら guest。"""
+    u = re.sub(r"[^0-9A-Za-z_\-ぁ-んァ-ヶー一-龠]", "_", (user or "").strip())
+    return u or "guest"
+
+
+def _path(user):
+    return os.path.join(_DIR, f"paper_{_safe_user(user)}.json")
 
 
 def _new_state():
@@ -20,9 +30,9 @@ def _new_state():
             "history": [], "equity_curve": [], "targets": {}, "stops": {}}
 
 
-def load():
+def load(user="guest"):
     try:
-        with open(_PATH, "r", encoding="utf-8") as f:
+        with open(_path(user), "r", encoding="utf-8") as f:
             s = json.load(f)
         # 後方互換: 欠けたキーを補完
         for k, v in _new_state().items():
@@ -32,9 +42,9 @@ def load():
         return _new_state()
 
 
-def save(state):
+def save(state, user="guest"):
     os.makedirs(_DIR, exist_ok=True)
-    with open(_PATH, "w", encoding="utf-8") as f:
+    with open(_path(user), "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
@@ -42,13 +52,13 @@ def _now():
     return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
-def reset():
+def reset(user="guest"):
     s = _new_state()
-    save(s)
+    save(s, user)
     return s
 
 
-def buy(state, code, name, shares, price):
+def buy(state, code, name, shares, price, user="guest"):
     """仮想で買う。戻り値: (state, error)。"""
     shares = int(shares)
     if shares <= 0:
@@ -67,11 +77,11 @@ def buy(state, code, name, shares, price):
     state["cash"] -= cost
     state["history"].insert(0, {"time": _now(), "action": "買", "code": code, "name": name,
                                 "shares": shares, "price": float(price)})
-    save(state)
+    save(state, user)
     return state, None
 
 
-def sell(state, code, shares, price):
+def sell(state, code, shares, price, user="guest"):
     """仮想で売る。戻り値: (state, error)。"""
     shares = int(shares)
     pos = state["positions"].get(code)
@@ -89,7 +99,7 @@ def sell(state, code, shares, price):
     state["history"].insert(0, {"time": _now(), "action": "売", "code": code, "name": name,
                                 "shares": shares, "price": float(price),
                                 "realized": round(realized)})
-    save(state)
+    save(state, user)
     return state, None
 
 
@@ -113,7 +123,7 @@ def summary(state, prices):
             "ret_pct": ret_pct, "rows": rows}
 
 
-def record_equity(state, total):
+def record_equity(state, total, user="guest"):
     """今日の総資産を資産推移に記録(1日1点・同日は上書き)。"""
     today = datetime.date.today().isoformat()
     ec = state.setdefault("equity_curve", [])
@@ -123,7 +133,7 @@ def record_equity(state, total):
         ec.append({"date": today, "total": round(total)})
         if len(ec) > 400:
             del ec[0]
-    save(state)
+    save(state, user)
 
 
 def stats(state):
@@ -137,24 +147,24 @@ def stats(state):
             "total_realized": total_realized}
 
 
-def set_target(state, code, price):
+def set_target(state, code, price, user="guest"):
     """目標株価(利確)を設定/解除(price<=0で解除)。"""
     tg = state.setdefault("targets", {})
     if price and price > 0:
         tg[code] = float(price)
     elif code in tg:
         del tg[code]
-    save(state)
+    save(state, user)
 
 
-def set_stop(state, code, price):
+def set_stop(state, code, price, user="guest"):
     """損切りライン(stop)を設定/解除(price<=0で解除)。"""
     sp = state.setdefault("stops", {})
     if price and price > 0:
         sp[code] = float(price)
     elif code in sp:
         del sp[code]
-    save(state)
+    save(state, user)
 
 
 if __name__ == "__main__":
