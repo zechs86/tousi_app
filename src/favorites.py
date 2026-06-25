@@ -4,14 +4,11 @@
 # クラウドはアプリが眠るとファイルが消えるが、その時は config.FAVORITES から自動で復元する
 # （= config.FAVORITES が“消えない基本のお気に入り”。永続させたい銘柄はそこに入れる）。
 
-import os
 import re
-import json
 
 import config
+import store
 from universe import UNIVERSE
-
-_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 
 def _safe_user(user):
@@ -19,28 +16,22 @@ def _safe_user(user):
     return u or "guest"
 
 
-def _path(user):
-    return os.path.join(_DIR, f"favorites_{_safe_user(user)}.json")
+def _key(user):
+    return f"fav:{_safe_user(user)}"
 
 
 def _read_file(user):
-    try:
-        with open(_path(user), "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None  # ファイルなし
+    return store.get_json(_key(user))  # 無ければ None
 
 
 def _save_file(lst, user):
-    os.makedirs(_DIR, exist_ok=True)
-    with open(_path(user), "w", encoding="utf-8") as f:
-        json.dump(lst, f, ensure_ascii=False, indent=2)
+    store.set_json(_key(user), lst)
 
 
 def load(user="guest"):
-    """お気に入りコードのリスト。ファイルが無ければ config.FAVORITES から作る。"""
+    """お気に入りコードのリスト。無ければ config.FAVORITES から作る。"""
     f = _read_file(user)
-    if f is None:
+    if not isinstance(f, list):
         f = [c for c in getattr(config, "FAVORITES", []) if c in UNIVERSE]
         _save_file(f, user)
     # ユニバースに存在するものだけ・重複排除・順序維持

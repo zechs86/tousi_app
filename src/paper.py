@@ -5,24 +5,22 @@
 # 注意: Streamlit Cloud はファイルが一時的なので、アプリが眠ると記録が消えることがあります。
 #       ずっと残したい場合は将来クラウドDBを足します。手元(PC)では永続します。
 
-import os
 import re
-import json
 import datetime
+
+import store
 
 START_CASH = 1_000_000  # 仮想の初期資金(円)。10万円スタートの練習なら下げてもOK。
 
-_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
-
 
 def _safe_user(user):
-    """ファイル名に使える形に。空なら guest。"""
+    """キーに使える形に。空なら guest。"""
     u = re.sub(r"[^0-9A-Za-z_\-ぁ-んァ-ヶー一-龠]", "_", (user or "").strip())
     return u or "guest"
 
 
-def _path(user):
-    return os.path.join(_DIR, f"paper_{_safe_user(user)}.json")
+def _key(user):
+    return f"paper:{_safe_user(user)}"
 
 
 def _new_state():
@@ -31,21 +29,16 @@ def _new_state():
 
 
 def load(user="guest"):
-    try:
-        with open(_path(user), "r", encoding="utf-8") as f:
-            s = json.load(f)
-        # 後方互換: 欠けたキーを補完
-        for k, v in _new_state().items():
+    s = store.get_json(_key(user))
+    if isinstance(s, dict):
+        for k, v in _new_state().items():  # 後方互換: 欠けたキーを補完
             s.setdefault(k, v)
         return s
-    except Exception:
-        return _new_state()
+    return _new_state()
 
 
 def save(state, user="guest"):
-    os.makedirs(_DIR, exist_ok=True)
-    with open(_path(user), "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    store.set_json(_key(user), state)
 
 
 def _now():
