@@ -21,6 +21,13 @@ def _secret(name):
             return str(st.secrets[name])
     except Exception:
         pass
+    try:
+        import secret_local  # 手元のファイル(gitignore)。UPSTASH_... を入れておける
+        v = getattr(secret_local, name, "")
+        if v:
+            return str(v)
+    except Exception:
+        pass
     return ""
 
 
