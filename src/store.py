@@ -84,6 +84,27 @@ def kv_set(key, value):
     return True
 
 
+def list_keys(pattern="*"):
+    """パターンに一致するキー一覧を返す(例 'paper:*')。
+    Upstashなら KEYS、ファイル保存ならファイル名から復元(best-effort)。"""
+    url, tok = _upstash()
+    if url:
+        try:
+            import requests
+            r = requests.post(url, headers={"Authorization": f"Bearer {tok}"},
+                              json=["KEYS", pattern], timeout=15)
+            if r.status_code == 200:
+                return r.json().get("result") or []
+        except Exception:
+            pass
+    # ファイル保存のフォールバック: data/kv/*.json のファイル名(=_safe済みキー)を返す。
+    # 注: ':' は '_' に変換済みのため raw キーと完全一致しないことがある。
+    try:
+        return [fn[:-5] for fn in os.listdir(_DIR) if fn.endswith(".json")]
+    except Exception:
+        return []
+
+
 def get_json(key, default=None):
     raw = kv_get(key)
     if not raw:

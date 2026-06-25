@@ -203,7 +203,7 @@ USER = _uval or "guest"
 if page == "🔎 今ここ！":
     cL, cR = st.columns([3, 1])
     cL.markdown("#### 全銘柄スキャン")
-    if cR.button("🔄 更新", use_container_width=True):
+    if cR.button("🔄 更新", width='stretch'):
         run_scan_cached.clear()
     st.caption("買いサインが点灯した銘柄を強い順に表示（約110銘柄を分析）。")
 
@@ -239,7 +239,7 @@ if page == "🔎 今ここ！":
 </div>
 """, unsafe_allow_html=True)
             if st.button(f"📝 {h['name']}をペーパーで買う準備", key=f"toscanbuy_{h['code']}",
-                         use_container_width=True):
+                         width='stretch'):
                 sh = 100 if h["is_jp"] else 1
                 st.session_state["paper_prefill"] = {
                     "code": h["code"], "name": h["name"], "shares": sh,
@@ -260,7 +260,7 @@ if page == "📊 銘柄分析":
         fcols = st.columns(min(len(favs), 4))
         for i, fc in enumerate(favs):
             if fcols[i % 4].button(UNIVERSE.get(fc, fc), key=f"favpick_{fc}",
-                                   use_container_width=True):
+                                   width='stretch'):
                 st.session_state["chart_sel"] = fc
                 st.rerun()
 
@@ -269,7 +269,7 @@ if page == "📊 銘柄分析":
     code = cc1.selectbox("銘柄を選ぶ", options=codes, key="chart_sel",
                          format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
     is_f = favorites.is_fav(code, USER)
-    if cc2.button("⭐解除" if is_f else "☆登録", key="fav_toggle", use_container_width=True):
+    if cc2.button("⭐解除" if is_f else "☆登録", key="fav_toggle", width='stretch'):
         favorites.toggle(code, USER)
         st.rerun()
 
@@ -322,7 +322,7 @@ if page == "📊 銘柄分析":
             legend=dict(orientation="h", y=1.04, x=0, bgcolor="rgba(0,0,0,0)"))
         fig.update_xaxes(gridcolor="rgba(255,255,255,.05)")
         fig.update_yaxes(gridcolor="rgba(255,255,255,.05)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         figr = go.Figure()
         figr.add_trace(go.Scatter(x=plot.index, y=plot["RSI"], name="RSI",
@@ -336,7 +336,7 @@ if page == "📊 銘柄分析":
         figr.update_xaxes(gridcolor="rgba(255,255,255,.05)")
         figr.update_yaxes(gridcolor="rgba(255,255,255,.05)")
         st.caption("RSI（70超=買われすぎ／30割れ=売られすぎ）")
-        st.plotly_chart(figr, use_container_width=True)
+        st.plotly_chart(figr, width='stretch')
 
         info = get_info(code)
         per = info.get("trailingPE")
@@ -375,7 +375,7 @@ if page == "🤖 AI分析":
     if not config.ANTHROPIC_API_KEY:
         st.warning("⚠️ APIキーが未設定です。`src/secret_local.py` か Streamlitのsecrets に `ANTHROPIC_API_KEY` を設定してください。", icon="⚠️")
 
-    run_ai = st.button("🤖 この銘柄をAI分析する", use_container_width=True,
+    run_ai = st.button("🤖 この銘柄をAI分析する", width='stretch',
                        disabled=not config.ANTHROPIC_API_KEY)
 
     skey = f"ai_result_{code3}"
@@ -549,7 +549,7 @@ if page == "💰 ペーパー":
         fige.update_xaxes(gridcolor="rgba(255,255,255,.05)")
         fige.update_yaxes(gridcolor="rgba(255,255,255,.05)")
         st.caption("資産推移（点線＝初期資金）")
-        st.plotly_chart(fige, use_container_width=True)
+        st.plotly_chart(fige, width='stretch')
 
     # 保有ポジション
     if summ["rows"]:
@@ -620,7 +620,7 @@ if page == "💰 ペーパー":
         # 「今ここ！」から準備された銘柄なら、確定で利確/損切りも自動セット
         pf = st.session_state.get("paper_prefill")
         btn_label = "買う（仮想・確定）" if (pf and pf["code"] == bcode) else "買う（仮想）"
-        if st.button(btn_label, use_container_width=True, key="paper_buy_btn"):
+        if st.button(btn_label, width='stretch', key="paper_buy_btn"):
             if bp:
                 _, err = paper.buy(pstate, bcode, UNIVERSE[bcode], bsh, bp, USER)
                 if err:
@@ -647,7 +647,7 @@ if page == "💰 ペーパー":
             maxsh = pstate["positions"][scode]["shares"]
             st.caption(f"保有 {maxsh}株")
             ssh = st.number_input("株数", min_value=1, max_value=maxsh, value=maxsh, step=100, key="paper_sell_sh")
-            if st.button("売る（仮想）", use_container_width=True, key="paper_sell_btn"):
+            if st.button("売る（仮想）", width='stretch', key="paper_sell_btn"):
                 sp = last_price(scode)
                 if sp:
                     _, err = paper.sell(pstate, scode, ssh, sp, USER)

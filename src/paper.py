@@ -23,9 +23,21 @@ def _key(user):
     return f"paper:{_safe_user(user)}"
 
 
+def all_users():
+    """ペーパー口座を持つ利用者名の一覧(保存済みキーから復元)。"""
+    users = set()
+    for k in store.list_keys("paper:*"):
+        if k.startswith("paper:"):       # Upstash(rawキー)
+            users.add(k[len("paper:"):])
+        elif k.startswith("paper_"):     # ファイル保存(:が_に変換済み)
+            users.add(k[len("paper_"):])
+    return sorted(users)
+
+
 def _new_state():
     return {"cash": START_CASH, "start_cash": START_CASH, "positions": {},
-            "history": [], "equity_curve": [], "targets": {}, "stops": {}}
+            "history": [], "equity_curve": [], "targets": {}, "stops": {},
+            "alerts_sent": {}}
 
 
 def load(user="guest"):
