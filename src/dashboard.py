@@ -237,8 +237,27 @@ if page == "🔎 今ここ！":
 
 # ============ ページ: 銘柄分析 ============
 if page == "📊 銘柄分析":
-    code = st.selectbox("銘柄を選ぶ", options=codes, index=default_idx,
-                        format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
+    import favorites
+    favs = favorites.load()
+    # ⭐お気に入りをワンタップ表示
+    if favs:
+        st.markdown("**⭐ お気に入り**")
+        fcols = st.columns(min(len(favs), 4))
+        for i, fc in enumerate(favs):
+            if fcols[i % 4].button(UNIVERSE.get(fc, fc), key=f"favpick_{fc}",
+                                   use_container_width=True):
+                st.session_state["chart_sel"] = fc
+                st.rerun()
+
+    st.session_state.setdefault("chart_sel", "8267.T" if "8267.T" in codes else codes[0])
+    cc1, cc2 = st.columns([4, 1])
+    code = cc1.selectbox("銘柄を選ぶ", options=codes, key="chart_sel",
+                         format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
+    is_f = favorites.is_fav(code)
+    if cc2.button("⭐解除" if is_f else "☆登録", key="fav_toggle", use_container_width=True):
+        favorites.toggle(code)
+        st.rerun()
+
     df = get_price(code)
     if df is None:
         st.error("データが取得できませんでした。")
