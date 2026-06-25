@@ -73,10 +73,102 @@ def _fetch_prices(codes):
     return prices
 
 
+def _level_status(cur, level, kind, near_pct):
+    """現在値が利確/損切りラインに対してどの段階か。
+    戻り値: 'reached'(到達) / 'near'(あと near_pct% 以内) / None(まだ遠い・未設定)。"""
+    if not level or level <= 0:
+        return None
+    if kind == "target":          # 利確: 上に到達
+        if cur >= level:
+            return "reached"
+        if near_pct > 0 and cur >= level * (1 - near_pct / 100):
+            return "near"
+    else:                         # stop: 下に到達
+        if cur <= level:
+            return "reached"
+        if near_pct > 0 and cur <= level * (1 + near_pct / 100):
+            return "near"
+    return None
+
+
+def _watched_codes():
+    """お気に入り＋ペーパー保有の全コード(全利用者の和集合)。決算カレンダー用。"""
+    import favorites
+    codes = set()
+    users = set()
+    try:
+        users |= set(paper.all_users())
+    except Exception:
+        pass
+    try:
+        for k in store.list_keys("fav:*"):
+            if k.startswith("fav:"):
+                users.add(k[len("fav:"):])
+            elif k.startswith("fav_"):
+                users.add(k[len("fav_"):])
+    except Exception:
+        pass
+    for u in users:
+        try:
+            codes |= set(favorites.load(u))
+        except Exception:
+            pass
+        try:
+            codes |= set(paper.load(u).get("positions", {}))
+        except Exception:
+            pass
+    return codes
+
+
+def build_earnings_reminder():
+    """お気に入り/保有のうち、次の決算発表日が近い銘柄を知らせる(無料)。
+    ※日本株はyfinanceに決算日が無い/ズレることがあるので、取れた範囲で表示する。"""
+    remind_days = getattr(config, "EARNINGS_REMIND_DAYS", 0)
+    if not remind_days or remind_days <= 0:
+        return ""
+    import datetime as dt
+    try:
+        from universe import UNIVERSE
+    except Exception:
+        UNIVERSE = {}
+    codes = list(_watched_codes())[:20]   # API回数を抑えるため上限
+    if not codes:
+        return ""
+    today = dt.date.today()
+    rows = []
+    import yfinance as yf
+    for code in codes:
+        try:
+            cal = yf.Ticker(code).calendar
+            ed = cal.get("Earnings Date") if isinstance(cal, dict) else None
+            if not ed:
+                continue
+            dates = ed if isinstance(ed, (list, tuple)) else [ed]
+            # date / datetime いずれも date に正規化し、今日以降で最も近い日
+            norm = []
+            for d in dates:
+                if hasattr(d, "date"):
+                    d = d.date()
+                if isinstance(d, dt.date):
+                    norm.append(d)
+            future = sorted([d for d in norm if d >= today])
+            if not future:
+                continue
+            nd = future[0]
+            days = (nd - today).days
+            if days <= remind_days:
+                name = UNIVERSE.get(code, code.replace(".T", ""))
+                rows.append((days, f"📅{name} 決算まであと{days}日（{nd}）"))
+        except Exception:
+            continue
+    rows.sort()
+    return "\n".join(line for _, line in rows)
+
+
 def build_yutai_reminder():
     """株主優待の権利付最終日が近い銘柄を、残り日数＋現在値＋1年レンジ位置で知らせる。
-    対象は watch.RECORD_MONTHS の銘柄。残り日数が config.YUTAI_REMIND_DAYS 以下のものだけ。
-    戻り値: メッセージ文字列(該当なしは空)。"""
+    対象は watch.RECORD_MONTHS と config.YUTAI_RECORD_MONTHS の合算。
+    残り日数が config.YUTAI_REMIND_DAYS 以下のものだけ。戻り値: メッセージ(該当なしは空)。"""
     remind_days = getattr(config, "YUTAI_REMIND_DAYS", 0)
     if not remind_days or remind_days <= 0:
         return ""
@@ -87,11 +179,23 @@ def build_yutai_reminder():
     except Exception:
         UNIVERSE = {}
     today = dt.date.today()
+    # watch.RECORD_MONTHS と config.YUTAI_RECORD_MONTHS を合算(configが優先)
+    months_map = dict(getattr(watch, "RECORD_MONTHS", {}))
+    months_map.update(getattr(config, "YUTAI_RECORD_MONTHS", {}) or {})
     lines = []
-    for code in watch.RECORD_MONTHS:
-        kenri, record = watch.next_kenri_date(code, today)
-        if not kenri:
+    for code, months in months_map.items():
+        # 月マップから直接、最も近い権利付最終日(=権利確定日の2営業日前)を求める
+        cands = []
+        for y in (today.year, today.year + 1):
+            for m in months:
+                record = watch.last_business_day(y, m)
+                kenri = watch.minus_business_days(record, 2)
+                if kenri >= today:
+                    cands.append((kenri, record))
+        cands.sort()
+        if not cands:
             continue
+        kenri, record = cands[0]
         days = (kenri - today).days
         if days > remind_days:
             continue
@@ -142,6 +246,8 @@ def build_paper_alerts():
     if not codes:
         return "", 0
 
+    near_pct = getattr(config, "NEAR_ALERT_PCT", 0) or 0
+    _RANK = {None: 0, "near": 1, "reached": 2}
     prices = _fetch_prices(codes)
     lines = []
     for u, s in states.items():
@@ -154,28 +260,33 @@ def build_paper_alerts():
                 continue
             cm = "" if code.endswith(".T") else "$"
             name = pos.get("name", code)
-            tg = s.get("targets", {}).get(code)
-            sp = s.get("stops", {}).get(code)
-
-            k_t = f"{code}:target"
-            if tg and cur >= tg:
-                if not sent.get(k_t):
-                    lines.append(f"🎯{who}{name} 利確ライン到達！ {cm}{cur:,.0f}（目標{cm}{tg:,.0f}）")
-                    sent[k_t] = True
+            for kind, level, icon, word in (
+                    ("target", s.get("targets", {}).get(code), "🎯", "利確"),
+                    ("stop",   s.get("stops", {}).get(code),   "🛑", "損切り")):
+                key = f"{code}:{kind}"
+                status = _level_status(cur, level, kind, near_pct)
+                prev = sent.get(key)
+                # 正規化(旧データの True は reached 扱い)
+                if prev is True:
+                    prev = "reached"
+                if status is None:                 # 圏外→マーカー解除して再アーム
+                    if prev is not None:
+                        sent.pop(key, None)
+                        changed = True
+                    continue
+                if _RANK[status] > _RANK.get(prev, 0):   # 前進した時だけ通知
+                    if status == "reached":
+                        lines.append(f"{icon}{who}{name} {word}ライン到達！ {cm}{cur:,.0f}"
+                                     f"（{word}{cm}{level:,.0f}）")
+                    else:  # near = もうすぐ
+                        rem = (level / cur - 1) * 100 if kind == "target" else (1 - level / cur) * 100
+                        lines.append(f"{icon}{who}{name} もうすぐ{word}（あと{abs(rem):.1f}%） "
+                                     f"{cm}{cur:,.0f}（{word}{cm}{level:,.0f}）")
+                    sent[key] = status
                     changed = True
-            elif k_t in sent:       # 条件を外れたら次の到達でまた鳴らせるよう解除
-                del sent[k_t]
-                changed = True
-
-            k_s = f"{code}:stop"
-            if sp and cur <= sp:
-                if not sent.get(k_s):
-                    lines.append(f"🛑{who}{name} 損切りライン到達！ {cm}{cur:,.0f}（損切{cm}{sp:,.0f}）")
-                    sent[k_s] = True
+                elif status != prev:               # 後退(到達→near等)は無音で記録だけ
+                    sent[key] = status
                     changed = True
-            elif k_s in sent:
-                del sent[k_s]
-                changed = True
         if changed:
             try:
                 paper.save(s, u)
@@ -236,6 +347,15 @@ def main():
         yutai = ""
     if yutai:
         parts.append(f"\n🎁 株主優待カウントダウン\n{yutai}")
+
+    # 決算カレンダー(お気に入り/保有で決算が近い銘柄)
+    try:
+        earn = build_earnings_reminder()
+    except Exception as e:
+        print("決算カレンダーエラー:", e)
+        earn = ""
+    if earn:
+        parts.append(f"\n📅 決算が近い銘柄\n{earn}")
 
     # AIによる一言総括(config.AI_NOTIFY_COMMENT=True かつ APIキーがある時だけ。既定オフ=無課金)
     if getattr(config, "AI_NOTIFY_COMMENT", False):

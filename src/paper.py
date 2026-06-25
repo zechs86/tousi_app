@@ -152,6 +152,47 @@ def stats(state):
             "total_realized": total_realized}
 
 
+def monthly_realized(state):
+    """月別の実現損益を [{'month':'2026-06','realized':12345,'trades':3}] で返す(古い順)。"""
+    agg = {}
+    for h in state.get("history", []):
+        if "realized" not in h:
+            continue
+        month = (h.get("time") or "")[:7]   # 'YYYY-MM'
+        if len(month) != 7:
+            continue
+        a = agg.setdefault(month, {"realized": 0, "trades": 0})
+        a["realized"] += h["realized"]
+        a["trades"] += 1
+    return [{"month": m, "realized": agg[m]["realized"], "trades": agg[m]["trades"]}
+            for m in sorted(agg)]
+
+
+def by_symbol(state):
+    """銘柄別の成績を返す(実現損益の大きい順)。
+    [{'code','name','trades','wins','win_rate','realized'}]"""
+    agg = {}
+    for h in state.get("history", []):
+        if "realized" not in h:
+            continue
+        code = h.get("code")
+        a = agg.setdefault(code, {"name": h.get("name", code), "trades": 0,
+                                  "wins": 0, "realized": 0})
+        a["name"] = h.get("name", a["name"])
+        a["trades"] += 1
+        a["realized"] += h["realized"]
+        if h["realized"] > 0:
+            a["wins"] += 1
+    out = []
+    for code, a in agg.items():
+        out.append({"code": code, "name": a["name"], "trades": a["trades"],
+                    "wins": a["wins"],
+                    "win_rate": (a["wins"] / a["trades"] * 100) if a["trades"] else 0.0,
+                    "realized": a["realized"]})
+    out.sort(key=lambda x: x["realized"], reverse=True)
+    return out
+
+
 def set_target(state, code, price, user="guest"):
     """目標株価(利確)を設定/解除(price<=0で解除)。"""
     tg = state.setdefault("targets", {})

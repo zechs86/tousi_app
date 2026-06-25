@@ -551,6 +551,39 @@ if page == "💰 ペーパー":
         st.caption("資産推移（点線＝初期資金）")
         st.plotly_chart(fige, width='stretch')
 
+    # 成績の内訳（月別実現損益・銘柄別成績）
+    mrows = paper.monthly_realized(pstate)
+    srows = paper.by_symbol(pstate)
+    if mrows or srows:
+        with st.expander("📈 成績の内訳（月別・銘柄別）"):
+            if mrows:
+                st.caption("月別の実現損益")
+                figm = go.Figure()
+                figm.add_trace(go.Bar(
+                    x=[m["month"] for m in mrows],
+                    y=[m["realized"] for m in mrows],
+                    marker_color=[UP if m["realized"] >= 0 else DOWN for m in mrows]))
+                figm.update_layout(template="plotly_dark", height=200,
+                                   margin=dict(l=0, r=0, t=8, b=0),
+                                   paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                   font=dict(color="#EAF0F6"), showlegend=False)
+                figm.update_xaxes(gridcolor="rgba(255,255,255,.05)")
+                figm.update_yaxes(gridcolor="rgba(255,255,255,.05)", zeroline=True,
+                                  zerolinecolor="rgba(255,255,255,.2)")
+                st.plotly_chart(figm, width='stretch')
+            if srows:
+                st.caption("銘柄別の成績（実現損益の大きい順）")
+                for r in srows:
+                    rc = "up" if r["realized"] >= 0 else "down"
+                    sgn = "+" if r["realized"] >= 0 else ""
+                    st.markdown(f"""
+<div class="card" style="padding:10px 14px">
+  <div class="sc-top"><span class="sc-name" style="font-size:.95rem">{r['name']}（{r['code']}）</span>
+    <span class="m-value {rc}" style="font-size:.95rem">{sgn}{r['realized']:,}円</span></div>
+  <div class="sc-foot">{r['trades']}回 ／ 勝率 {r['win_rate']:.0f}%（{r['wins']}勝{r['trades']-r['wins']}敗）</div>
+</div>
+""", unsafe_allow_html=True)
+
     # 保有ポジション
     if summ["rows"]:
         st.markdown("##### 保有ポジション")
