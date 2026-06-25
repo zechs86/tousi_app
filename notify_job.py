@@ -73,6 +73,49 @@ def _fetch_prices(codes):
     return prices
 
 
+def build_yutai_reminder():
+    """株主優待の権利付最終日が近い銘柄を、残り日数＋現在値＋1年レンジ位置で知らせる。
+    対象は watch.RECORD_MONTHS の銘柄。残り日数が config.YUTAI_REMIND_DAYS 以下のものだけ。
+    戻り値: メッセージ文字列(該当なしは空)。"""
+    remind_days = getattr(config, "YUTAI_REMIND_DAYS", 0)
+    if not remind_days or remind_days <= 0:
+        return ""
+    import datetime as dt
+    import watch  # next_kenri_date / RECORD_MONTHS を再利用
+    try:
+        from universe import UNIVERSE
+    except Exception:
+        UNIVERSE = {}
+    today = dt.date.today()
+    lines = []
+    for code in watch.RECORD_MONTHS:
+        kenri, record = watch.next_kenri_date(code, today)
+        if not kenri:
+            continue
+        days = (kenri - today).days
+        if days > remind_days:
+            continue
+        name = UNIVERSE.get(code, code.replace(".T", ""))
+        cm = "" if code.endswith(".T") else "$"
+        try:
+            import pandas as pd
+            import yfinance as yf
+            df = yf.download(code, period="1y", interval="1d",
+                             auto_adjust=True, progress=False)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+            df = df.dropna(subset=["Close"])
+            price = float(df["Close"].iloc[-1])
+            lo, hi = float(df["Close"].min()), float(df["Close"].max())
+            pos = (price - lo) / (hi - lo) * 100 if hi != lo else 50
+            zone = "安値圏" if pos <= 30 else ("高値圏" if pos >= 70 else "中間")
+            lines.append(f"🎁{name} 優待まであと{days}日（権利付最終日{kenri}）\n"
+                         f"　現在{cm}{price:,.0f}・1年レンジ{pos:.0f}%（{zone}）")
+        except Exception:
+            lines.append(f"🎁{name} 優待まであと{days}日（権利付最終日{kenri}）")
+    return "\n".join(lines)
+
+
 def build_paper_alerts():
     """各利用者のペーパー保有が利確🎯/損切り🛑ラインに到達したら通知文を作る。
     同じ到達を毎回鳴らさないよう、状態(alerts_sent)で1回だけ通知し条件解除で再アーム。
@@ -184,6 +227,15 @@ def main():
     if risks:
         parts.append(f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}")
         tags = "warning"
+
+    # 株主優待カウントダウン(イオン優待など。権利付最終日が近いと表示)
+    try:
+        yutai = build_yutai_reminder()
+    except Exception as e:
+        print("優待リマインダーエラー:", e)
+        yutai = ""
+    if yutai:
+        parts.append(f"\n🎁 株主優待カウントダウン\n{yutai}")
 
     # AIによる一言総括(config.AI_NOTIFY_COMMENT=True かつ APIキーがある時だけ。既定オフ=無課金)
     if getattr(config, "AI_NOTIFY_COMMENT", False):
