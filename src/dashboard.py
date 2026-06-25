@@ -184,15 +184,20 @@ page = st.radio("ページ", PAGES, horizontal=True, key="nav_page", label_visib
 codes = list(UNIVERSE.keys())
 default_idx = codes.index("8267.T") if "8267.T" in codes else 0
 
-# ===== 利用者(共有時に人ごとにペーパー/お気に入りを分ける) =====
-# URLの ?u=名前 と連動。自分のURLをブックマークすれば自分専用になる。
+# ===== 利用者(任意・共有時に人ごとに分ける) =====
+# サイドバー(左の控えめな場所)に置く。一度入れれば保持される(URLにも記憶)。
 if "user_name" not in st.session_state:
     st.session_state["user_name"] = st.query_params.get("u", "")
-_uname = st.text_input("👤 あなたの名前（友人と共有する時に、各自のペーパーを分けるため）",
-                       key="user_name", placeholder="例: ken（空欄ならゲスト共用）")
-if _uname.strip() and st.query_params.get("u", "") != _uname.strip():
-    st.query_params["u"] = _uname.strip()  # URLに反映
-USER = _uname.strip() or "guest"
+with st.sidebar:
+    st.markdown("### 👤 利用者")
+    st.text_input("名前（友人と共有する時だけ）", key="user_name",
+                  placeholder="例: ken（空欄=ゲスト）")
+    _uval = st.session_state["user_name"].strip()
+    if _uval and st.query_params.get("u", "") != _uval:
+        st.query_params["u"] = _uval  # URLに記憶(ブックマークで次回も自動)
+    st.caption(f"現在: {'ゲスト共用' if not _uval else _uval}")
+    st.caption("一度入れれば保持されます。自分のURLをブックマークすると次回も自動で入ります。")
+USER = _uval or "guest"
 
 # ============ ページ: スキャナー ============
 if page == "🔎 今ここ！":
