@@ -158,7 +158,7 @@ st.markdown("""
 # ===== ページ移動ナビ(タブ風) =====
 # 💬AI相談は従量課金のため AI_CHAT_ENABLED=True の時だけ表示(getattrで安全に)。
 CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
-PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "📰 ニュース"]
+PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "🗓️ 予定", "📰 ニュース"]
 
 # 他のボタンからのページ移動要求(_goto)を、ナビ生成前に反映
 if "_goto" in st.session_state:
@@ -703,6 +703,58 @@ if page == "💰 ペーパー":
     if st.button("🗑️ ペーパー口座をリセット", key="paper_reset"):
         paper.reset(USER)
         st.rerun()
+
+# ============ ページ: 予定（優待・決算カレンダー） ============
+if page == "🗓️ 予定":
+    import calendar_view
+    import favorites
+    import paper
+    st.markdown("#### 🗓️ 予定（株主優待・決算）")
+    st.caption("優待の権利付最終日と、お気に入り＋保有銘柄の次回決算日をまとめて確認できます。"
+               "※日本株は決算日が取れない/ズレることがあります。")
+
+    # --- 株主優待カレンダー ---
+    st.markdown("##### 🎁 株主優待カレンダー")
+    with st.spinner("優待スケジュール計算中…"):
+        yrows = calendar_view.yutai_schedule()
+    if not yrows:
+        st.info("優待銘柄が未登録です。config.py の YUTAI_RECORD_MONTHS に追加できます。")
+    for r in yrows:
+        cm = "" if r["code"].endswith(".T") else "$"
+        urgent = "up" if r["days"] <= 14 else ""
+        price_line = ""
+        if r["price"] is not None:
+            zcls = "up" if r["zone"] == "安値圏" else ("down" if r["zone"] == "高値圏" else "")
+            price_line = (f'<div class="sc-foot">現在 {cm}{r["price"]:,.0f}／'
+                          f'1年レンジ <span class="{zcls}">{r["pos"]:.0f}%（{r["zone"]}）</span></div>')
+        st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">🎁 {r['name']}（{r['code']}）</span>
+    <span class="m-value {urgent}" style="font-size:1rem">あと{r['days']}日</span></div>
+  <div class="sc-foot">権利付最終日 <b>{r['kenri']}</b> ／ 権利確定 {r['record']}</div>
+  {price_line}
+</div>
+""", unsafe_allow_html=True)
+
+    # --- 決算カレンダー ---
+    st.markdown("##### 📅 決算カレンダー（お気に入り＋保有）")
+    ecodes = list(dict.fromkeys(list(favorites.load(USER)) + list(paper.load(USER).get("positions", {}))))
+    if not ecodes:
+        st.info("お気に入り（⭐）や保有銘柄がありません。先に登録すると決算日が並びます。")
+    else:
+        with st.spinner("決算日を取得中…"):
+            erows = calendar_view.earnings_schedule(ecodes)
+        if not erows:
+            st.caption("対象銘柄の決算日が取得できませんでした（日本株はデータが無いことがあります）。")
+        for r in erows:
+            urgent = "up" if r["days"] <= 7 else ""
+            st.markdown(f"""
+<div class="card" style="padding:10px 14px">
+  <div class="sc-top"><span class="sc-name" style="font-size:.95rem">📅 {r['name']}（{r['code']}）</span>
+    <span class="m-value {urgent}" style="font-size:.95rem">あと{r['days']}日</span></div>
+  <div class="sc-foot">次回決算 <b>{r['date']}</b></div>
+</div>
+""", unsafe_allow_html=True)
 
 # ============ ページ: ニュース ============
 if page == "📰 ニュース":

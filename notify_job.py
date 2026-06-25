@@ -126,43 +126,13 @@ def build_earnings_reminder():
     remind_days = getattr(config, "EARNINGS_REMIND_DAYS", 0)
     if not remind_days or remind_days <= 0:
         return ""
-    import datetime as dt
-    try:
-        from universe import UNIVERSE
-    except Exception:
-        UNIVERSE = {}
+    import calendar_view
     codes = list(_watched_codes())[:20]   # API回数を抑えるため上限
     if not codes:
         return ""
-    today = dt.date.today()
-    rows = []
-    import yfinance as yf
-    for code in codes:
-        try:
-            cal = yf.Ticker(code).calendar
-            ed = cal.get("Earnings Date") if isinstance(cal, dict) else None
-            if not ed:
-                continue
-            dates = ed if isinstance(ed, (list, tuple)) else [ed]
-            # date / datetime いずれも date に正規化し、今日以降で最も近い日
-            norm = []
-            for d in dates:
-                if hasattr(d, "date"):
-                    d = d.date()
-                if isinstance(d, dt.date):
-                    norm.append(d)
-            future = sorted([d for d in norm if d >= today])
-            if not future:
-                continue
-            nd = future[0]
-            days = (nd - today).days
-            if days <= remind_days:
-                name = UNIVERSE.get(code, code.replace(".T", ""))
-                rows.append((days, f"📅{name} 決算まであと{days}日（{nd}）"))
-        except Exception:
-            continue
-    rows.sort()
-    return "\n".join(line for _, line in rows)
+    lines = [f"📅{r['name']} 決算まであと{r['days']}日（{r['date']}）"
+             for r in calendar_view.earnings_schedule(codes) if r["days"] <= remind_days]
+    return "\n".join(lines)
 
 
 def build_yutai_reminder():
@@ -172,51 +142,17 @@ def build_yutai_reminder():
     remind_days = getattr(config, "YUTAI_REMIND_DAYS", 0)
     if not remind_days or remind_days <= 0:
         return ""
-    import datetime as dt
-    import watch  # next_kenri_date / RECORD_MONTHS を再利用
-    try:
-        from universe import UNIVERSE
-    except Exception:
-        UNIVERSE = {}
-    today = dt.date.today()
-    # watch.RECORD_MONTHS と config.YUTAI_RECORD_MONTHS を合算(configが優先)
-    months_map = dict(getattr(watch, "RECORD_MONTHS", {}))
-    months_map.update(getattr(config, "YUTAI_RECORD_MONTHS", {}) or {})
+    import calendar_view
     lines = []
-    for code, months in months_map.items():
-        # 月マップから直接、最も近い権利付最終日(=権利確定日の2営業日前)を求める
-        cands = []
-        for y in (today.year, today.year + 1):
-            for m in months:
-                record = watch.last_business_day(y, m)
-                kenri = watch.minus_business_days(record, 2)
-                if kenri >= today:
-                    cands.append((kenri, record))
-        cands.sort()
-        if not cands:
+    for r in calendar_view.yutai_schedule():
+        if r["days"] > remind_days:
             continue
-        kenri, record = cands[0]
-        days = (kenri - today).days
-        if days > remind_days:
-            continue
-        name = UNIVERSE.get(code, code.replace(".T", ""))
-        cm = "" if code.endswith(".T") else "$"
-        try:
-            import pandas as pd
-            import yfinance as yf
-            df = yf.download(code, period="1y", interval="1d",
-                             auto_adjust=True, progress=False)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            df = df.dropna(subset=["Close"])
-            price = float(df["Close"].iloc[-1])
-            lo, hi = float(df["Close"].min()), float(df["Close"].max())
-            pos = (price - lo) / (hi - lo) * 100 if hi != lo else 50
-            zone = "安値圏" if pos <= 30 else ("高値圏" if pos >= 70 else "中間")
-            lines.append(f"🎁{name} 優待まであと{days}日（権利付最終日{kenri}）\n"
-                         f"　現在{cm}{price:,.0f}・1年レンジ{pos:.0f}%（{zone}）")
-        except Exception:
-            lines.append(f"🎁{name} 優待まであと{days}日（権利付最終日{kenri}）")
+        cm = "" if r["code"].endswith(".T") else "$"
+        if r["price"] is not None:
+            lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）\n"
+                         f"　現在{cm}{r['price']:,.0f}・1年レンジ{r['pos']:.0f}%（{r['zone']}）")
+        else:
+            lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）")
     return "\n".join(lines)
 
 
