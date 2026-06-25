@@ -577,16 +577,24 @@ if page == "💰 ペーパー":
 </div>
 """, unsafe_allow_html=True)
 
-        with st.expander("🎯 目標株価を設定"):
+        with st.expander("🎯 利確・🛑 損切りラインを設定/変更"):
             tcode = st.selectbox("銘柄", options=list(pstate["positions"].keys()),
                                  format_func=lambda c: f"{pstate['positions'][c]['name']}（{c}）",
                                  key="paper_tgt_sel")
-            cur_t = pstate.get("targets", {}).get(tcode, 0.0)
-            tval = st.number_input("目標株価（0で解除）", min_value=0.0,
-                                   value=float(cur_t), step=10.0, key="paper_tgt_val")
-            if st.button("設定", key="paper_tgt_btn"):
+            cur_t = float(pstate.get("targets", {}).get(tcode, 0.0))
+            cur_s = float(pstate.get("stops", {}).get(tcode, 0.0))
+            # 銘柄を切り替えたら、その銘柄の現在の設定値を入力欄に反映
+            if st.session_state.get("_tgt_last_sel") != tcode:
+                st.session_state["paper_tgt_val"] = cur_t
+                st.session_state["paper_stop_val"] = cur_s
+                st.session_state["_tgt_last_sel"] = tcode
+            e1, e2 = st.columns(2)
+            tval = e1.number_input("🎯 利確（0で解除）", min_value=0.0, step=10.0, key="paper_tgt_val")
+            sval = e2.number_input("🛑 損切り（0で解除）", min_value=0.0, step=10.0, key="paper_stop_val")
+            if st.button("設定する", key="paper_tgt_btn"):
                 paper.set_target(pstate, tcode, tval, USER)
-                st.success("目標株価を設定しました。"); st.rerun()
+                paper.set_stop(pstate, tcode, sval, USER)
+                st.success("利確・損切りを設定しました。"); st.rerun()
     else:
         st.info("まだ保有なし。下の「買う」で練習を始めましょう。")
 
