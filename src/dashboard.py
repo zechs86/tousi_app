@@ -382,6 +382,47 @@ if page == "📊 銘柄分析":
 </div>
 """, unsafe_allow_html=True)
 
+        # 🛡️ リスク管理（買ってよい株数の目安）
+        with st.expander("🛡️ リスク管理（買ってよい株数の目安）"):
+            st.caption("「1回で失ってよい上限」と損切り幅から、適正な株数を逆算します（大ケガしないための目安）。")
+            apx = float(sig["price"])
+            rets = dfi["Close"].pct_change().tail(20)
+            vol_pct = float(rets.std() * 100) if rets.notna().sum() >= 5 else 0.0
+            base_stop = float(getattr(config, "STOP_LOSS_PCT", 5.0))
+            sugg_stop = max(base_stop, round(vol_pct * 2, 1)) if vol_pct else base_stop
+            if vol_pct:
+                st.caption(f"この銘柄の1日の値動きの目安 ±{vol_pct:.1f}%。"
+                           f"損切り幅は値動き2回分（≒{vol_pct*2:.1f}%）以上が安全圏。")
+            rc1, rc2 = st.columns(2)
+            budget = rc1.number_input("1回で失ってよい上限（円）", min_value=500,
+                                      value=int(getattr(config, "RISK_PER_TRADE_YEN", 5000)),
+                                      step=500, key="risk_budget")
+            stop_pct = rc2.number_input("損切り幅（%）", min_value=0.5,
+                                        value=float(sugg_stop), step=0.5, key="risk_stop")
+            loss_per_share = apx * stop_pct / 100
+            raw_sh = int(budget // loss_per_share) if loss_per_share > 0 else 0
+            is_jp = code.endswith(".T")
+            unit = 100 if is_jp else 1
+            unit_sh = (raw_sh // unit) * unit
+            ccur = "" if is_jp else "$"
+            stop_price = apx * (1 - stop_pct / 100)
+            if is_jp and unit_sh < unit:
+                st.warning(f"この予算では単元(100株)に届きません（1株 {ccur}{apx:,.0f}）。"
+                           f"予算を増やすか、単元未満株（楽天のかぶミニ/S株）で {raw_sh}株まで。")
+            else:
+                need = unit_sh * apx
+                maxloss = unit_sh * loss_per_share
+                st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">買ってよい株数の目安</span>
+    <span class="m-value up" style="font-size:1.1rem">{unit_sh:,}株</span></div>
+  <div class="sc-foot">必要資金 {ccur}{need:,.0f} ／ 損切り価格 <span class="down">{ccur}{stop_price:,.0f}</span>（−{stop_pct:.1f}%）</div>
+  <div class="sc-foot">損切りに当たった時の損失 約 {ccur}{maxloss:,.0f}（＝設定した上限以内）</div>
+</div>
+""", unsafe_allow_html=True)
+            st.caption("※株数=上限損失÷(株価×損切り%)。単元(100株)単位に切り捨て。"
+                       "損切りを必ず実行する前提の目安です。")
+
         plot = dfi.tail(150)
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
