@@ -68,10 +68,14 @@ def dividend_yield_pct(code, price):
     return dy if dy > 1 else dy * 100   # %表記/小数表記どちらでも対応
 
 
-def yutai_schedule(today=None, with_price=True):
-    """優待カレンダー。[{code,name,kenri,record,days,price,pos,zone}] を残り日数の近い順で返す。"""
+def yutai_schedule(today=None, with_price=True, yutai_values=None):
+    """優待カレンダー。[{code,name,kenri,record,days,price,pos,zone,利回り…}] を近い順で返す。
+    yutai_values: {code: 年間優待価値(円)}。指定すると config.YUTAI_VALUE_YEN より優先(利用者ごとの保存値用)。"""
     if today is None:
         today = dt.date.today()
+    values = dict(getattr(config, "YUTAI_VALUE_YEN", {}) or {})
+    if yutai_values:
+        values.update({k: v for k, v in yutai_values.items() if v})
     try:
         from universe import UNIVERSE
     except Exception:
@@ -95,7 +99,7 @@ def yutai_schedule(today=None, with_price=True):
                 unit_cost = p * unit
                 row["unit_cost"] = unit_cost
                 row["div_yield"] = dividend_yield_pct(code, p)
-                yv = (getattr(config, "YUTAI_VALUE_YEN", {}) or {}).get(code)
+                yv = values.get(code)
                 if yv:
                     row["yutai_value"] = yv
                     row["yutai_yield"] = yv / unit_cost * 100

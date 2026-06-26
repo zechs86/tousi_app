@@ -745,16 +745,39 @@ if page == "🗓️ 予定":
     import calendar_view
     import favorites
     import paper
+    import store
     st.markdown("#### 🗓️ 予定（株主優待・決算）")
     st.caption("優待の権利付最終日と、お気に入り＋保有銘柄の次回決算日をまとめて確認できます。"
                "※日本株は決算日が取れない/ズレることがあります。")
 
     # --- 株主優待カレンダー ---
     st.markdown("##### 🎁 株主優待カレンダー")
+    # 利用者ごとに保存した「優待の年間価値(円)」を読み、総合利回りに反映
+    yval_key = f"yutaival:{favorites._safe_user(USER)}"
+    yvals = store.get_json(yval_key, {}) or {}
     with st.spinner("優待スケジュール計算中…"):
-        yrows = calendar_view.yutai_schedule()
+        yrows = calendar_view.yutai_schedule(yutai_values=yvals)
     if not yrows:
         st.info("優待銘柄が未登録です。config.py の YUTAI_RECORD_MONTHS に追加できます。")
+
+    # 優待の価値を入力して総合利回りを出す(プログラム不要・利用者ごとに保存)
+    if yrows:
+        with st.expander("🎁 優待の価値を入れて総合利回りを見る"):
+            st.caption("優待の『年間価値(円)』を入れると 総合利回り(配当＋優待) が出ます。"
+                       "イオンのオーナーズカードは“買物○%キャッシュバック”なので、"
+                       "あなたの年間イオン利用額×3%程度が目安です（例: 年20万円利用→6000円）。")
+            new_vals = dict(yvals)
+            changed_y = False
+            for r in yrows:
+                cur_v = int(yvals.get(r["code"], 0) or 0)
+                v = st.number_input(f"{r['name']}（{r['code']}）の優待 年間価値（円・0で無し）",
+                                    min_value=0, step=1000, value=cur_v, key=f"yval_{r['code']}")
+                if int(v) != cur_v:
+                    new_vals[r["code"]] = int(v)
+                    changed_y = True
+            if st.button("保存する", key="yval_save"):
+                store.set_json(yval_key, {k: v for k, v in new_vals.items() if v})
+                st.success("保存しました。総合利回りに反映します。"); st.rerun()
     for r in yrows:
         cm = "" if r["code"].endswith(".T") else "$"
         urgent = "up" if r["days"] <= 14 else ""
