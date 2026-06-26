@@ -201,6 +201,42 @@ USER = _uval or "guest"
 
 # ============ ページ: スキャナー ============
 if page == "🔎 今ここ！":
+    import favorites
+    # ⭐ お気に入りウォッチ: 登録銘柄の今の状態(トレンド・押し目/待ち・レンジ位置)を一覧
+    favs = favorites.load(USER)
+    if favs:
+        st.markdown("#### ⭐ お気に入りウォッチ")
+        st.caption("登録銘柄の今の状態。🟢=押し目買いゾーン（上昇中の一時的な下げ）、↗=上昇、↘=下降（待ち）。")
+        for code in favs:
+            df = get_price(code)
+            if df is None or len(df) < 80:   # SMA75 を出せる行数が必要
+                continue
+            last = add_all_indicators(df).iloc[-1]
+            price = float(last["Close"])
+            rsi = float(last["RSI"])
+            uptrend = bool(last["SMA25"] > last["SMA75"])
+            lo, hi = float(df["Close"].min()), float(df["Close"].max())
+            pos = (price - lo) / (hi - lo) * 100 if hi != lo else 50
+            zone = "安値圏" if pos <= 30 else ("高値圏" if pos >= 70 else "中間")
+            in_dip = uptrend and rsi <= getattr(config, "DIP_RSI", 40)
+            if in_dip:
+                status, scls = "🟢 押し目買いゾーン", "up"
+            elif uptrend:
+                status, scls = "↗ 上昇トレンド", "up"
+            else:
+                status, scls = "↘ 下降（待ち）", "down"
+            cm = "" if code.endswith(".T") else "$"
+            zcls = "up" if zone == "安値圏" else ("down" if zone == "高値圏" else "")
+            name = UNIVERSE.get(code, code.replace(".T", ""))
+            st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">⭐ {name}（{code}）</span>
+    <span class="m-value {scls}" style="font-size:.95rem">{status}</span></div>
+  <div class="sc-foot">{cm}{price:,.0f} ／ RSI {rsi:.0f} ／ 1年レンジ <span class="{zcls}">{pos:.0f}%（{zone}）</span></div>
+</div>
+""", unsafe_allow_html=True)
+        st.divider()
+
     cL, cR = st.columns([3, 1])
     cL.markdown("#### 全銘柄スキャン")
     if cR.button("🔄 更新", width='stretch'):
