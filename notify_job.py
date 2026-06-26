@@ -26,15 +26,21 @@ import store
 
 def build_message(hits):
     """買いサインを、スマホで読みやすくまとめる。"""
+    import risk
+    bud = int(getattr(config, "RISK_PER_TRADE_YEN", 5000))
     top = hits[: config.SCAN_TOP_N]
     lines = []
     for h in top:
         cur = "" if h["is_jp"] else "$"
         mark = "🟢" if h["type"] == "押し目" else "🚀"
         afford = "✅" if h["affordable"] else "⚠️"
+        # 🛡️ 株数目安(候補の損切り価格から・上限RISK_PER_TRADE_YEN)
+        spct = (h["price"] - h["stop"]) / h["price"] * 100 if h.get("price") else 0
+        sg = risk.suggest_shares(h["price"], spct, bud, h["is_jp"]) if spct > 0 else None
+        sh_txt = f" 🛡️{sg['unit_shares']:,}株" if (sg and sg["unit_shares"] >= sg["unit"]) else ""
         lines.append(
             f"{mark}{h['name']} {h['type']}(強{h['strength']:.0f})\n"
-            f"　{cur}{h['price']:,.0f}／損切{cur}{h['stop']:,.0f}・利確{cur}{h['target']:,.0f} {afford}"
+            f"　{cur}{h['price']:,.0f}／損切{cur}{h['stop']:,.0f}・利確{cur}{h['target']:,.0f} {afford}{sh_txt}"
         )
     return "\n".join(lines)
 
