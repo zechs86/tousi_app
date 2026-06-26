@@ -131,6 +131,12 @@ def get_price(code, period="1y"):
         return None
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_price_long(code):
+    """過去の似た局面の統計用に長め(5年)の履歴を取得(キャッシュ)。"""
+    return get_price(code, period="5y")
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def run_scan_cached():
     from scanner import scan
@@ -432,6 +438,40 @@ if page == "📊 銘柄分析":
 """, unsafe_allow_html=True)
             st.caption("※株数=上限損失÷(株価×損切り%)。単元(100株)単位に切り捨て。"
                        "損切りを必ず実行する前提の目安です。")
+
+        # 📊 過去の似た局面（統計・予測ではありません）
+        with st.expander("📊 過去の似た局面（予測ではなく“傾向”の参考）"):
+            st.caption("今日と似たRSI・トレンドだった過去の日を集め、その後に実際どう動いたかを集計します。"
+                       "※未来を当てるものではありません。損切りルールは必ず守ってください。")
+            import analog
+            df_long = get_price_long(code)
+            dlong = add_all_indicators(df_long) if (df_long is not None and len(df_long) > 80) else dfi
+            t_up = bool(dlong.iloc[-1]["SMA25"] > dlong.iloc[-1]["SMA75"])
+            t_rsi = float(dlong.iloc[-1]["RSI"])
+            st.caption(f"今日の状態: {'上昇トレンド' if t_up else '下降トレンド'} ／ RSI {t_rsi:.0f}（似た日＝同トレンド・RSI±7）")
+            any_shown = False
+            for hz, lbl in [(5, "5営業日後"), (20, "20営業日後（約1か月）")]:
+                a = analog.historical_analog(dlong, horizon=hz)
+                if not a:
+                    continue
+                any_shown = True
+                wcls = "up" if a["win_rate"] >= 50 else "down"
+                acls = "up" if a["avg"] >= 0 else "down"
+                st.markdown(f"""
+<div class="card" style="padding:10px 14px">
+  <div class="sc-top"><span class="sc-name" style="font-size:.95rem">{lbl}</span>
+    <span class="m-value {wcls}" style="font-size:1rem">上昇率 {a['win_rate']:.0f}%</span></div>
+  <div class="sc-foot">似た局面 {a['samples']}回 ／ 平均 <span class="{acls}">{a['avg']:+.1f}%</span>
+   ／ 中央値 {a['median']:+.1f}%</div>
+  <div class="sc-foot">レンジ 最大 <span class="up">{a['best']:+.1f}%</span>
+   〜 最小 <span class="down">{a['worst']:+.1f}%</span></div>
+</div>
+""", unsafe_allow_html=True)
+            if not any_shown:
+                st.caption("似た局面のサンプルが足りず、統計を出せませんでした（データが短い銘柄など）。")
+            else:
+                st.caption("※「上昇率」=似た過去の日のうち、その後プラスだった割合。"
+                           "平均がプラスでも最小値のように大きく下げる例もあります（だから損切り）。")
 
         plot = dfi.tail(150)
         fig = go.Figure()
