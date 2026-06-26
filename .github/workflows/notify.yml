@@ -37,6 +37,10 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           # AIコメント用。Secrets に ANTHROPIC_API_KEY を登録すると通知にAIの一言が付く。
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 保存先(Upstash Redis)。これが無いと利確到達アラート/押し目/開示dedup/⚙️設定の
+          # 反映ができない(=ファイル保存にフォールバックし、Actionsでは毎回まっさら)。必須。
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
           # 朝の実行(UTC 23時台)は「朝」、それ以外は「夜」とラベル付け
           RUN_LABEL: ${{ github.event.schedule == '15 23 * * 0-4' && '朝' || '夜' }}
         run: python notify_job.py
