@@ -239,6 +239,36 @@ def comment_on_scan(hits, risks=None, model=None):
         return ""
 
 
+def summarize_news(name, items, model=None):
+    """ニュース見出しのリストを、AIが初心者向けに数行で要約。
+    戻り値: (要約文字列, エラー文字列)。APIキーが無ければ ("", メッセージ)。"""
+    client = _client()
+    if client is None:
+        return "", "APIキーが未設定です（config.ANTHROPIC_API_KEY）。"
+    if not items:
+        return "", "要約するニュースがありません。"
+    heads = "\n".join(f"- {it['title']}" for it in items[:12])
+    prompt = (
+        f"あなたは投資初心者向けの冷静なアドバイザーです。以下は『{name}』に関する最近の"
+        "ニュース見出しです。煽らず、次の形式で日本語要約してください(投資助言ではなく判断材料)。\n"
+        "【全体の雰囲気】1文(好材料/悪材料/中立とその理由)\n"
+        "【注目ポイント】箇条書き2〜3点(株価に効きそうな材料)\n"
+        "【注意点】1文(リスクや割り引いて見るべき点)\n"
+        "最後に『最終判断はご自身で』と添える。\n\n"
+        f"見出し:\n{heads}"
+    )
+    try:
+        resp = client.messages.create(
+            model=model or config.AI_MODEL,
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+        return text, None
+    except Exception as e:
+        return "", f"AI要約に失敗しました: {e}"
+
+
 if __name__ == "__main__":
     import sys
     import _net  # noqa: F401

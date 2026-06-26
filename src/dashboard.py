@@ -836,4 +836,24 @@ if page == "📰 ニュース":
 </div>
 """, unsafe_allow_html=True)
 
+        # AIニュース要約(既定オフ・押した時だけ課金)。config.AI_NEWS_SUMMARY_ENABLED=Trueで表示。
+        if getattr(config, "AI_NEWS_SUMMARY_ENABLED", False):
+            import ai_analysis
+            if not ai_analysis.has_key():
+                st.caption("🤖 AI要約はAPIキー未設定のため使えません（config.ANTHROPIC_API_KEY）。")
+            else:
+                st.caption("🤖 押した時だけAIが見出しを要約します（1回およそ¥1〜2の従量課金）。")
+                if st.button("🤖 AIでニュースを要約する", key="news_ai_sum", width='stretch'):
+                    with st.spinner("AIが要約中…"):
+                        text, err = ai_analysis.summarize_news(name2, items)
+                    if err:
+                        st.error(err)
+                    else:
+                        st.session_state["news_ai_result"] = {"code": code2, "text": text}
+                res = st.session_state.get("news_ai_result")
+                if res and res.get("code") == code2 and res.get("text"):
+                    st.markdown(f'<div class="card">🤖 <b>AIニュース要約</b><br>'
+                                f'{res["text"].replace(chr(10), "<br>")}</div>',
+                                unsafe_allow_html=True)
+
 st.markdown('<div class="foot-note">Powered by yfinance ・ ntfy ・ Streamlit｜サイン=必勝ではありません</div>', unsafe_allow_html=True)
