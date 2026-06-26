@@ -295,11 +295,21 @@ if page == "🔎 今ここ！":
         st.markdown('<div class="card">😴 今日はサイン点灯銘柄なし。<br><span style="color:#9AA6B2">様子見の相場です。</span></div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<p style="color:#9AA6B2;font-size:.85rem">点灯 <b style="color:#EAF0F6">{len(hits)}</b> 件 ／ 上位 {min(len(hits), config.SCAN_TOP_N)} 件を表示</p>', unsafe_allow_html=True)
+        import risk
+        _bud = int(getattr(config, "RISK_PER_TRADE_YEN", 5000))
         for h in hits[:config.SCAN_TOP_N]:
             cur = "" if h["is_jp"] else "$"
             kind = "up" if h["type"] == "押し目" else "hot"
             emoji = "🟢" if h["type"] == "押し目" else "🚀"
             afford = "✅ 10万円で買える" if h["affordable"] else "⚠️ 10万円では足りない"
+            # 🛡️ この候補の損切り価格に基づく株数目安(上限¥RISK_PER_TRADE_YEN)
+            _spct = (h["price"] - h["stop"]) / h["price"] * 100 if h["price"] else 0
+            _sg = risk.suggest_shares(h["price"], _spct, _bud, h["is_jp"]) if _spct > 0 else None
+            if _sg and _sg["unit_shares"] >= _sg["unit"]:
+                risk_line = (f'<div class="sc-foot">🛡️ 目安 {_sg["unit_shares"]:,}株'
+                             f'（損切り−{_spct:.1f}%・上限¥{_bud:,}／必要¥{_sg["need"]:,.0f}）</div>')
+            else:
+                risk_line = f'<div class="sc-foot">🛡️ 上限¥{_bud:,}・この損切り幅では単元(100株)に届きません（リスク大）</div>'
             st.markdown(f"""
 <div class="card signal-card {kind}">
   <div class="sc-top">
@@ -313,6 +323,7 @@ if page == "🔎 今ここ！":
     <div class="metric"><div class="m-label">利確目安</div><div class="m-value up">{fmt(h['target'],cur)}</div></div>
   </div>
   <div class="sc-foot">{afford}</div>
+  {risk_line}
 </div>
 """, unsafe_allow_html=True)
             if st.button(f"📝 {h['name']}をペーパーで買う準備", key=f"toscanbuy_{h['code']}",
