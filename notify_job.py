@@ -137,7 +137,7 @@ def build_earnings_reminder():
 
 
 def _dip_signal(code):
-    """押し目シグナル判定。(押し目ゾーンか, 現在値, RSI) を返す。失敗時 None。
+    """押し目シグナル判定。(押し目ゾーンか, 現在値, RSI, 上昇トレンドか) を返す。失敗時 None。
     改良③: 上昇トレンド(SMA25>SMA75)中に RSI<=config.DIP_RSI なら押し目買いゾーン。"""
     try:
         import pandas as pd
@@ -156,9 +156,22 @@ def _dip_signal(code):
         uptrend = bool(last["SMA25"] > last["SMA75"])
         rsi = float(last["RSI"])
         in_dip = uptrend and rsi <= getattr(config, "DIP_RSI", 40)
-        return in_dip, float(last["Close"]), rsi
+        return in_dip, float(last["Close"]), rsi, uptrend
     except Exception:
         return None
+
+
+def _trend_label(code):
+    """銘柄の今の状態を短いラベルで返す。押し目/上昇/下降(待ち)。取れなければ空。"""
+    r = _dip_signal(code)
+    if r is None:
+        return ""
+    in_dip, _price, _rsi, uptrend = r
+    if in_dip:
+        return "🟢押し目買いゾーン"
+    if uptrend:
+        return "↗上昇トレンド"
+    return "↘下降(待ち)"
 
 
 def build_dip_alerts():
@@ -214,7 +227,7 @@ def build_dip_alerts():
             r = sig.get(code)
             if r is None:
                 continue
-            in_dip, price, rsi = r
+            in_dip, price, rsi, _uptrend = r
             cm = "" if code.endswith(".T") else "$"
             name = UNIVERSE.get(code, code.replace(".T", ""))
             if in_dip:
@@ -245,8 +258,17 @@ def build_yutai_reminder():
             continue
         cm = "" if r["code"].endswith(".T") else "$"
         if r["price"] is not None:
+            # 2行目に現在値・レンジ位置・配当利回り・トレンド状態を入れて“毎日ブリーフィング”化
+            extras = [f"1年レンジ{r['pos']:.0f}%（{r['zone']}）"]
+            if r.get("yutai_yield") is not None and r.get("total_yield") is not None:
+                extras.append(f"総合利回り{r['total_yield']:.1f}%")
+            elif r.get("div_yield") is not None:
+                extras.append(f"配当{r['div_yield']:.1f}%")
+            trend = _trend_label(r["code"])
+            if trend:
+                extras.append(trend)
             lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）\n"
-                         f"　現在{cm}{r['price']:,.0f}・1年レンジ{r['pos']:.0f}%（{r['zone']}）")
+                         f"　現在{cm}{r['price']:,.0f}・" + "・".join(extras))
         else:
             lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）")
     return "\n".join(lines)
