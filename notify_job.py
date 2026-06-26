@@ -350,6 +350,11 @@ def build_paper_alerts():
 
 
 def main():
+    try:
+        import appconfig
+        appconfig.apply_to_config()  # ⚙️設定の保存値を反映(しきい値/トグル)
+    except Exception as e:
+        print("設定反映スキップ:", e)
     label = os.environ.get("RUN_LABEL", "").strip()
     prefix = f"【{label}のチェック】" if label else "【自動チェック】"
 

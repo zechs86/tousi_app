@@ -15,6 +15,8 @@ from universe import UNIVERSE
 from indicators import add_all_indicators
 from signals import judge
 import config
+import appconfig
+appconfig.apply_to_config()  # 保存済みの⚙️設定をconfigへ反映(失敗時は既定のまま)
 
 st.set_page_config(page_title="投資ダッシュボード", page_icon="📈",
                    layout="centered", initial_sidebar_state="collapsed")
@@ -158,7 +160,7 @@ st.markdown("""
 # ===== ページ移動ナビ(タブ風) =====
 # 💬AI相談は従量課金のため AI_CHAT_ENABLED=True の時だけ表示(getattrで安全に)。
 CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
-PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "🗓️ 予定", "📰 ニュース"]
+PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "🗓️ 予定", "📰 ニュース", "⚙️ 設定"]
 
 # 他のボタンからのページ移動要求(_goto)を、ナビ生成前に反映
 if "_goto" in st.session_state:
@@ -878,5 +880,33 @@ if page == "📰 ニュース":
                     st.markdown(f'<div class="card">🤖 <b>AIニュース要約</b><br>'
                                 f'{res["text"].replace(chr(10), "<br>")}</div>',
                                 unsafe_allow_html=True)
+
+# ============ ページ: 設定 ============
+if page == "⚙️ 設定":
+    st.markdown("#### ⚙️ 設定（しきい値・通知）")
+    st.caption("プログラムを触らず、アプリの挙動を調整できます。保存するとクラウドにも反映され、"
+               "朝夜の自動通知（GitHub Actions）にも次回から効きます。")
+    eff = appconfig.effective()
+    new = {}
+    for name, (typ, default, lbl, hlp) in appconfig.FIELDS.items():
+        cur = eff.get(name, default)
+        if typ == "bool":
+            new[name] = st.toggle(lbl, value=bool(cur), help=hlp, key=f"cfg_{name}")
+        elif typ == "float":
+            new[name] = st.number_input(lbl, min_value=0.0, step=0.5,
+                                        value=float(cur), help=hlp, key=f"cfg_{name}")
+        else:  # int
+            new[name] = st.number_input(lbl, min_value=0, step=1,
+                                        value=int(cur), help=hlp, key=f"cfg_{name}")
+    c1, c2 = st.columns(2)
+    if c1.button("💾 保存する", width='stretch', key="cfg_save"):
+        appconfig.save(new)
+        appconfig.apply_to_config()
+        st.success("保存しました。アプリと次回以降の通知に反映されます。")
+    if c2.button("↩️ 既定に戻す", width='stretch', key="cfg_reset"):
+        appconfig.save({})
+        appconfig.apply_to_config()
+        st.success("既定値に戻しました。"); st.rerun()
+    st.caption("※AI系（コメント/要約）はオンにすると課金が発生します。料金が気になる場合はオフのままで。")
 
 st.markdown('<div class="foot-note">Powered by yfinance ・ ntfy ・ Streamlit｜サイン=必勝ではありません</div>', unsafe_allow_html=True)
