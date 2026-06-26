@@ -244,6 +244,41 @@ def build_dip_alerts():
     return "\n".join(lines), total
 
 
+def build_disclosure_alerts():
+    """お気に入り＋保有銘柄に“注目度の高い適時開示(TDnet)”が新しく出たら知らせる。
+    既出idは store キー 'tdnetseen' に記録して重複通知しない。戻り値: (メッセージ, 件数)。"""
+    if not getattr(config, "TDNET_ALERT_ENABLED", True):
+        return "", 0
+    import tdnet
+    try:
+        from universe import UNIVERSE
+    except Exception:
+        UNIVERSE = {}
+    codes = list(_watched_codes())[:15]
+    if not codes:
+        return "", 0
+    seen = set(store.get_json("tdnetseen", []) or [])
+    lines, new_ids = [], []
+    for code in codes:
+        try:
+            discs = tdnet.fetch_disclosures(code, limit=5)
+        except Exception:
+            continue
+        name = UNIVERSE.get(code, code.replace(".T", ""))
+        for d in discs:
+            if not d.get("important"):
+                continue
+            did = d.get("id")
+            if not did or did in seen:
+                continue
+            lines.append(f"📑{name} {d['title']}（{d['date']}）")
+            new_ids.append(did)
+    if new_ids:
+        merged = (list(seen) + new_ids)[-500:]   # 直近500idだけ保持
+        store.set_json("tdnetseen", merged)
+    return "\n".join(lines), len(lines)
+
+
 def build_yutai_reminder():
     """株主優待の権利付最終日が近い銘柄を、残り日数＋現在値＋1年レンジ位置で知らせる。
     対象は watch.RECORD_MONTHS と config.YUTAI_RECORD_MONTHS の合算。
@@ -417,6 +452,13 @@ def main():
         earn = ""
     earn_part = (f"\n📅 決算が近い銘柄\n{earn}") if earn else ""
 
+    try:
+        disc_msg, disc_n = build_disclosure_alerts()
+    except Exception as e:
+        print("適時開示アラートエラー:", e)
+        disc_msg, disc_n = "", 0
+    disc_part = (f"\n📑 新しい適時開示(TDnet) {disc_n}件\n{disc_msg}") if disc_n else ""
+
     ai_part = ""
     if getattr(config, "AI_NOTIFY_COMMENT", False):
         ai = ai_analysis.comment_on_scan(hits, risks)
@@ -437,13 +479,15 @@ def main():
     if earn_part:
         en = len([ln for ln in earn.split("\n") if ln.strip()])
         hdr.append(f"📅決算{en}")
+    if disc_n:
+        hdr.append(f"📑開示{disc_n}")
     if risks:
         hdr.append(f"⚠️リスク{len(risks)}")
     header_line = "　" + " ・ ".join(hdr)
 
     # --- 並び順: あなたの目標に直結する情報を先頭へ(末尾が切り捨てられても残るように) ---
     parts = [prefix.rstrip("】") + "】", header_line]
-    for p in (yutai_part, dip_part, earn_part, buy_part, risk_part, ai_part):
+    for p in (yutai_part, disc_part, dip_part, earn_part, buy_part, risk_part, ai_part):
         if p:
             parts.append(p)
     parts.append("\n※サイン/警告=必勝ではありません。最終判断はご自身で。")

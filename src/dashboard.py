@@ -944,6 +944,28 @@ if page == "📰 ニュース":
                                 f'{res["text"].replace(chr(10), "<br>")}</div>',
                                 unsafe_allow_html=True)
 
+    # 適時開示(TDnet・公式) — Googleニュースより精度が高い“本物の材料”
+    st.markdown("##### 📑 適時開示（TDnet・公式）")
+    st.caption("企業が取引所に出す公式開示（決算/業績修正/配当/優待/自己株式など）。⭐=注目度が高い開示。")
+    import tdnet
+    with st.spinner("適時開示を取得中…"):
+        discs = tdnet.fetch_disclosures(code2, limit=8)
+    if not discs:
+        st.caption("適時開示が取得できませんでした（データ源の一時不調か、開示が少ない銘柄）。")
+    else:
+        rows_d = ""
+        for d in discs:
+            mark = "⭐" if d["important"] else "・"
+            tcls = "up" if d["important"] else ""
+            link = d["url"]
+            title_html = (f'<a href="{link}" target="_blank" style="color:inherit">{d["title"]}</a>'
+                          if link else d["title"])
+            rows_d += (f'<div class="news-item"><span class="news-dot">{mark}</span>'
+                       f'<span class="{tcls}">{title_html}<br>'
+                       f'<span class="news-src">{d["date"]}</span></span></div>')
+        st.markdown(f'<div class="card"><div style="margin-top:4px">{rows_d}</div></div>',
+                    unsafe_allow_html=True)
+
 # ============ ページ: 設定 ============
 if page == "⚙️ 設定":
     st.markdown("#### ⚙️ 設定（しきい値・通知）")
