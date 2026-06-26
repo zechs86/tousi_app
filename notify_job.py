@@ -384,53 +384,50 @@ def main():
         print("リスク検知エラー:", e)
         risks = []
 
-    parts = [prefix.rstrip("】") + "】"]
-
+    # --- 各セクションを先に作る ---
     if hits:
         n = min(len(hits), config.SCAN_TOP_N)
-        parts.append(f"\n🟢 買い候補 {len(hits)}件中 上位{n}件\n{build_message(hits)}")
+        buy_part = f"\n🟢 買い候補 {len(hits)}件中 上位{n}件\n{build_message(hits)}"
         tags = "chart_with_upwards_trend"
     else:
-        parts.append("\n🟢 買いサイン点灯なし（様子見）")
+        buy_part = "\n🟢 買いサイン点灯なし（様子見）"
         tags = "coffee"
-
+    risk_part = (f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}") if risks else ""
     if risks:
-        parts.append(f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}")
         tags = "warning"
 
-    # お気に入りの押し目買いアラート(上昇トレンド中RSI≤40で点灯)
     try:
         dip_msg, dip_n = build_dip_alerts()
     except Exception as e:
         print("押し目アラートエラー:", e)
         dip_msg, dip_n = "", 0
-    if dip_n:
-        parts.append(f"\n🟢 お気に入りが押し目買いゾーン {dip_n}件\n{dip_msg}")
+    dip_part = (f"\n🟢 お気に入りが押し目買いゾーン {dip_n}件\n{dip_msg}") if dip_n else ""
 
-    # 株主優待カウントダウン(イオン優待など。権利付最終日が近いと表示)
     try:
         yutai = build_yutai_reminder()
     except Exception as e:
         print("優待リマインダーエラー:", e)
         yutai = ""
-    if yutai:
-        parts.append(f"\n🎁 株主優待カウントダウン\n{yutai}")
+    yutai_part = (f"\n🎁 株主優待カウントダウン\n{yutai}") if yutai else ""
 
-    # 決算カレンダー(お気に入り/保有で決算が近い銘柄)
     try:
         earn = build_earnings_reminder()
     except Exception as e:
         print("決算カレンダーエラー:", e)
         earn = ""
-    if earn:
-        parts.append(f"\n📅 決算が近い銘柄\n{earn}")
+    earn_part = (f"\n📅 決算が近い銘柄\n{earn}") if earn else ""
 
-    # AIによる一言総括(config.AI_NOTIFY_COMMENT=True かつ APIキーがある時だけ。既定オフ=無課金)
+    ai_part = ""
     if getattr(config, "AI_NOTIFY_COMMENT", False):
         ai = ai_analysis.comment_on_scan(hits, risks)
         if ai:
-            parts.append(f"\n🤖 {ai}")
+            ai_part = f"\n🤖 {ai}"
 
+    # --- 並び順: あなたの目標に直結する情報を先頭へ(末尾が切り捨てられても残るように) ---
+    parts = [prefix.rstrip("】") + "】"]
+    for p in (yutai_part, dip_part, earn_part, buy_part, risk_part, ai_part):
+        if p:
+            parts.append(p)
     parts.append("\n※サイン/警告=必勝ではありません。最終判断はご自身で。")
     msg = "\n".join(parts)
     # ntfyの本文上限(約4096バイト)対策。日本語は1文字3バイトなので余裕をみて1100文字で打ち切る。
