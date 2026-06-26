@@ -16,12 +16,19 @@ APP_URL = "https://tousiapp-halx5hjmpkl8fkzcyq2gqn.streamlit.app"
 # --- スマホ通知(ntfy) ---
 # 合言葉(トピック)は公開リポジトリに載せないため、コードに直接書きません。
 #   ① 環境変数 NTFY_TOPIC があればそれを使う(GitHub Actions の Secrets 用)
-#   ② 無ければ src/secret_local.py(gitignore済み・手元だけ)から読む
-#   ③ それも無ければ空(通知はスキップされるだけ)
+#   ② Streamlit Cloud の Secrets(クラウドのアプリからテスト通知を送る用)
+#   ③ 無ければ src/secret_local.py(gitignore済み・手元だけ)から読む
+#   ④ それも無ければ空(通知はスキップされるだけ)
 def _load_ntfy_topic():
     v = os.environ.get("NTFY_TOPIC")
     if v and v.strip():
         return v.strip()
+    try:
+        import streamlit as st  # クラウドのSecretsに NTFY_TOPIC を入れておけばアプリからも送れる
+        if "NTFY_TOPIC" in st.secrets:
+            return str(st.secrets["NTFY_TOPIC"]).strip()
+    except Exception:
+        pass
     try:
         from secret_local import NTFY_TOPIC as _t  # 手元だけのファイル(公開されない)
         return _t

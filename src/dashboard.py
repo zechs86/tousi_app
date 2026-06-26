@@ -1136,4 +1136,32 @@ if page == "⚙️ 設定":
         st.success("既定値に戻しました。"); st.rerun()
     st.caption("※AI系（コメント/要約）はオンにすると課金が発生します。料金が気になる場合はオフのままで。")
 
+    # --- 接続状態 & 通知テスト（ちゃんと繋がっているか自己診断） ---
+    st.markdown("##### 🔌 接続状態")
+    import store as _store
+    db_ok = _store.using_db()
+    db_txt = "✅ クラウドDB（Upstash）に接続" if db_ok else "⚠️ ファイル保存（クラウドでは記録が消える場合あり）"
+    topic_ok = bool(getattr(config, "NTFY_TOPIC", "").strip())
+    ntfy_txt = "✅ 通知トピック設定済み" if topic_ok else "⚠️ 通知トピック未設定（テスト送信不可）"
+    key_ok = bool(getattr(config, "ANTHROPIC_API_KEY", "").strip())
+    st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-foot">保存先: {db_txt}</div>
+  <div class="sc-foot">スマホ通知: {ntfy_txt}</div>
+  <div class="sc-foot">AIキー: {'✅ 設定済み' if key_ok else '— 未設定（AI機能オフ）'}</div>
+</div>
+""", unsafe_allow_html=True)
+    if topic_ok:
+        if st.button("📲 テスト通知を送る", key="cfg_test_push", width='stretch'):
+            from notify import send_push
+            ok = send_push("✅ テスト通知です。これが届けば、朝夜の自動通知も届きます。",
+                           title="Tousi Test", tags="white_check_mark", priority="default",
+                           click=(getattr(config, "APP_URL", "") or None))
+            if ok:
+                st.success("送信しました。スマホのntfyアプリ/通知を確認してください。")
+            else:
+                st.error("送信に失敗しました。トピック設定を確認してください。")
+    else:
+        st.caption("テスト通知を使うには、NTFY_TOPIC をクラウドのSecretsか手元のsecret_localに設定してください。")
+
 st.markdown('<div class="foot-note">Powered by yfinance ・ ntfy ・ Streamlit｜サイン=必勝ではありません</div>', unsafe_allow_html=True)
