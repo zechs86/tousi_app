@@ -399,19 +399,18 @@ if page == "📊 銘柄分析":
                                       step=500, key="risk_budget")
             stop_pct = rc2.number_input("損切り幅（%）", min_value=0.5,
                                         value=float(sugg_stop), step=0.5, key="risk_stop")
-            loss_per_share = apx * stop_pct / 100
-            raw_sh = int(budget // loss_per_share) if loss_per_share > 0 else 0
+            import risk
             is_jp = code.endswith(".T")
-            unit = 100 if is_jp else 1
-            unit_sh = (raw_sh // unit) * unit
+            sg = risk.suggest_shares(apx, stop_pct, budget, is_jp)
+            unit_sh, raw_sh = sg["unit_shares"], sg["raw"]
             ccur = "" if is_jp else "$"
-            stop_price = apx * (1 - stop_pct / 100)
-            if is_jp and unit_sh < unit:
+            stop_price = sg["stop_price"]
+            if is_jp and unit_sh < sg["unit"]:
                 st.warning(f"この予算では単元(100株)に届きません（1株 {ccur}{apx:,.0f}）。"
                            f"予算を増やすか、単元未満株（楽天のかぶミニ/S株）で {raw_sh}株まで。")
             else:
-                need = unit_sh * apx
-                maxloss = unit_sh * loss_per_share
+                need = sg["need"]
+                maxloss = sg["max_loss"]
                 st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">買ってよい株数の目安</span>
@@ -765,6 +764,22 @@ if page == "💰 ペーパー":
         cur_b = "" if bcode.endswith(".T") else "$"
         if bp:
             st.caption(f"現在値 {cur_b}{bp:,.0f}")
+        # 🛡️ リスク管理の株数目安(上限損失÷損切り幅)。ワンタップで株数に反映。
+        if bp:
+            import risk
+            _bud = int(getattr(config, "RISK_PER_TRADE_YEN", 5000))
+            _stop = float(getattr(config, "STOP_LOSS_PCT", 5.0))
+            _sg = risk.suggest_shares(bp, _stop, _bud, bcode.endswith(".T"))
+            if _sg["unit_shares"] >= _sg["unit"]:
+                st.caption(f"🛡️ 目安 {_sg['unit_shares']:,}株"
+                           f"（損切り{_stop:.0f}%・上限¥{_bud:,}で最大損失¥{_sg['max_loss']:,.0f}）")
+                if st.button(f"この株数（{_sg['unit_shares']:,}株）にする", key="paper_risk_set",
+                             width='stretch'):
+                    st.session_state["paper_buy_sh"] = int(_sg["unit_shares"])
+                    st.rerun()
+            else:
+                st.caption(f"🛡️ 上限¥{_bud:,}・損切り{_stop:.0f}%だと単元(100株)に届きません"
+                           f"（リスク大：株数を抑えるか損切りを浅く）。")
         bsh = st.number_input("株数", min_value=1, value=100, step=100, key="paper_buy_sh")
         if bp:
             st.caption(f"必要資金 ¥{bp*bsh:,.0f}")
