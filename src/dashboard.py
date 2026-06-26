@@ -511,6 +511,27 @@ if page == "📊 銘柄分析":
         pbr = info.get("priceToBook")
         rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
         dy = (rate / sig["price"] * 100) if rate else None
+        mcap = info.get("marketCap")
+        rg = info.get("revenueGrowth")   # 売上成長(小数: 0.15=15%)
+        eg = info.get("earningsGrowth")  # 利益成長
+
+        def _fmt_cap(v):
+            if not v:
+                return "—"
+            if v >= 1e12:
+                return f"{v/1e12:.2f}兆円"
+            if v >= 1e8:
+                return f"{v/1e8:,.0f}億円"
+            return f"{v:,.0f}円"
+
+        def _fmt_g(v):
+            if v is None:
+                return ("—", "")
+            pct = v * 100
+            return (f"{pct:+.1f}%", "up" if pct >= 0 else "down")
+
+        rg_t, rg_c = _fmt_g(rg)
+        eg_t, eg_c = _fmt_g(eg)
         st.markdown(f"""
 <div class="card">
   <div class="m-label" style="margin-bottom:8px">ファンダメンタル</div>
@@ -518,6 +539,11 @@ if page == "📊 銘柄分析":
     <div class="metric"><div class="m-label">PER</div><div class="m-value">{f'{per:.1f}倍' if per else '—'}</div></div>
     <div class="metric"><div class="m-label">PBR</div><div class="m-value">{f'{pbr:.2f}倍' if pbr else '—'}</div></div>
     <div class="metric"><div class="m-label">配当利回り</div><div class="m-value up">{f'{dy:.2f}%' if dy else '—'}</div></div>
+  </div>
+  <div class="mrow" style="margin-top:8px">
+    <div class="metric"><div class="m-label">時価総額</div><div class="m-value">{_fmt_cap(mcap)}</div></div>
+    <div class="metric"><div class="m-label">売上成長</div><div class="m-value {rg_c}">{rg_t}</div></div>
+    <div class="metric"><div class="m-label">利益成長</div><div class="m-value {eg_c}">{eg_t}</div></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
