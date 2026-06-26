@@ -1050,6 +1050,23 @@ if page == "📰 ニュース":
                        f'<span class="news-src">{d["date"]}</span></span></div>')
         st.markdown(f'<div class="card"><div style="margin-top:4px">{rows_d}</div></div>',
                     unsafe_allow_html=True)
+        # 開示のAI要約(既定オフ・押した時だけ課金)。ニュース要約と同じトグルで管理。
+        if getattr(config, "AI_NEWS_SUMMARY_ENABLED", False):
+            import ai_analysis
+            if ai_analysis.has_key():
+                st.caption("🤖 押した時だけAIが開示を解説します（1回およそ¥1〜2の従量課金）。")
+                if st.button("🤖 適時開示をAIで要約する", key="disc_ai_sum", width='stretch'):
+                    with st.spinner("AIが要約中…"):
+                        dtext, derr = ai_analysis.summarize_disclosures(name2, discs)
+                    if derr:
+                        st.error(derr)
+                    else:
+                        st.session_state["disc_ai_result"] = {"code": code2, "text": dtext}
+                dres = st.session_state.get("disc_ai_result")
+                if dres and dres.get("code") == code2 and dres.get("text"):
+                    st.markdown(f'<div class="card">🤖 <b>AI開示要約</b><br>'
+                                f'{dres["text"].replace(chr(10), "<br>")}</div>',
+                                unsafe_allow_html=True)
 
 # ============ ページ: 設定 ============
 if page == "⚙️ 設定":

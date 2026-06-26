@@ -269,6 +269,36 @@ def summarize_news(name, items, model=None):
         return "", f"AI要約に失敗しました: {e}"
 
 
+def summarize_disclosures(name, discs, model=None):
+    """適時開示(TDnet)のタイトル一覧を、AIが初心者向けに『何が重要か・株価にどう効くか』で要約。
+    戻り値: (要約文字列, エラー文字列)。"""
+    client = _client()
+    if client is None:
+        return "", "APIキーが未設定です（config.ANTHROPIC_API_KEY）。"
+    if not discs:
+        return "", "要約する開示がありません。"
+    lst = "\n".join(f"- {d.get('date','')} {d.get('title','')}" for d in discs[:10])
+    prompt = (
+        f"あなたは投資初心者向けの冷静なアドバイザーです。以下は『{name}』の適時開示(公式開示)の"
+        "一覧です。専門用語をかみくだき、次の形式で日本語要約してください(投資助言ではなく判断材料)。\n"
+        "【一番重要な開示】1つ挙げ、何を意味するか1〜2文\n"
+        "【株価への影響】上向き材料/下向き材料/中立 を理由つきで\n"
+        "【初心者メモ】ストックオプションや自己株式などの用語を1〜2語かみくだく\n"
+        "最後に『最終判断はご自身で』と添える。\n\n"
+        f"開示一覧:\n{lst}"
+    )
+    try:
+        resp = client.messages.create(
+            model=model or config.AI_MODEL,
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+        return text, None
+    except Exception as e:
+        return "", f"AI要約に失敗しました: {e}"
+
+
 if __name__ == "__main__":
     import sys
     import _net  # noqa: F401
