@@ -21,6 +21,7 @@ from notify import send_push
 from risk import detect_risks
 import ai_analysis
 import paper
+import store
 
 
 def build_message(hits):
@@ -133,6 +134,101 @@ def build_earnings_reminder():
     lines = [f"📅{r['name']} 決算まであと{r['days']}日（{r['date']}）"
              for r in calendar_view.earnings_schedule(codes) if r["days"] <= remind_days]
     return "\n".join(lines)
+
+
+def _dip_signal(code):
+    """押し目シグナル判定。(押し目ゾーンか, 現在値, RSI) を返す。失敗時 None。
+    改良③: 上昇トレンド(SMA25>SMA75)中に RSI<=config.DIP_RSI なら押し目買いゾーン。"""
+    try:
+        import pandas as pd
+        import yfinance as yf
+        from indicators import add_all_indicators
+        df = yf.download(code, period="1y", interval="1d",
+                         auto_adjust=True, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        df = df.dropna(subset=["Close"])
+        if len(df) < 80:          # SMA75 を出すのに足りない
+            return None
+        last = add_all_indicators(df).iloc[-1]
+        if pd.isna(last["SMA75"]) or pd.isna(last["RSI"]):
+            return None
+        uptrend = bool(last["SMA25"] > last["SMA75"])
+        rsi = float(last["RSI"])
+        in_dip = uptrend and rsi <= getattr(config, "DIP_RSI", 40)
+        return in_dip, float(last["Close"]), rsi
+    except Exception:
+        return None
+
+
+def build_dip_alerts():
+    """お気に入り銘柄が押し目買いゾーンに入ったら知らせる(利用者ごと)。
+    入った時に1回だけ通知し、ゾーンを抜けたら再アーム。戻り値: (メッセージ, 件数)。"""
+    if not getattr(config, "DIP_ALERT_ENABLED", True):
+        return "", 0
+    import favorites
+    try:
+        from universe import UNIVERSE
+    except Exception:
+        UNIVERSE = {}
+    # 利用者を集める(ペーパー利用者 ∪ お気に入り利用者)
+    users = set()
+    try:
+        users |= set(paper.all_users())
+    except Exception:
+        pass
+    try:
+        for k in store.list_keys("fav:*"):
+            if k.startswith("fav:"):
+                users.add(k[len("fav:"):])
+            elif k.startswith("fav_"):
+                users.add(k[len("fav_"):])
+    except Exception:
+        pass
+    if not users:
+        return "", 0
+    # 利用者→お気に入りコード、と全コード集合
+    user_codes, allcodes = {}, set()
+    for u in users:
+        try:
+            fc = list(favorites.load(u))
+        except Exception:
+            fc = []
+        user_codes[u] = fc
+        allcodes |= set(fc)
+    if not allcodes:
+        return "", 0
+    # 各コードのシグナルは1回だけ計算(共有)
+    sig = {}
+    for code in allcodes:
+        r = _dip_signal(code)
+        if r is not None:
+            sig[code] = r
+    lines, total = [], 0
+    for u, codes_u in user_codes.items():
+        key = f"dipsent:{u}"
+        sent = set(store.get_json(key, []) or [])
+        changed = False
+        who = "" if u == "guest" else f"[{u}] "
+        for code in codes_u:
+            r = sig.get(code)
+            if r is None:
+                continue
+            in_dip, price, rsi = r
+            cm = "" if code.endswith(".T") else "$"
+            name = UNIVERSE.get(code, code.replace(".T", ""))
+            if in_dip:
+                if code not in sent:
+                    lines.append(f"🟢{who}{name} 押し目買いゾーン（上昇中・RSI{rsi:.0f}）{cm}{price:,.0f}")
+                    sent.add(code)
+                    changed = True
+                    total += 1
+            elif code in sent:        # ゾーンを抜けたら再アーム
+                sent.discard(code)
+                changed = True
+        if changed:
+            store.set_json(key, sorted(sent))
+    return "\n".join(lines), total
 
 
 def build_yutai_reminder():
@@ -274,6 +370,15 @@ def main():
     if risks:
         parts.append(f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}")
         tags = "warning"
+
+    # お気に入りの押し目買いアラート(上昇トレンド中RSI≤40で点灯)
+    try:
+        dip_msg, dip_n = build_dip_alerts()
+    except Exception as e:
+        print("押し目アラートエラー:", e)
+        dip_msg, dip_n = "", 0
+    if dip_n:
+        parts.append(f"\n🟢 お気に入りが押し目買いゾーン {dip_n}件\n{dip_msg}")
 
     # 株主優待カウントダウン(イオン優待など。権利付最終日が近いと表示)
     try:
