@@ -204,11 +204,25 @@ USER = _uval or "guest"
 # ============ ページ: スキャナー ============
 if page == "🔎 今ここ！":
     import favorites
+    import calendar_view
     # ⭐ お気に入りウォッチ: 登録銘柄の今の状態(トレンド・押し目/待ち・レンジ位置)を一覧
     favs = favorites.load(USER)
     if favs:
         st.markdown("#### ⭐ お気に入りウォッチ")
         st.caption("登録銘柄の今の状態。🟢=押し目買いゾーン（上昇中の一時的な下げ）、↗=上昇、↘=下降（待ち）。")
+        # 優待・決算の近接バッジ用データ(価格は使わないので優待は高速・決算はお気に入りのみ)
+        try:
+            yd = getattr(config, "YUTAI_REMIND_DAYS", 75)
+            yutai_days = {r["code"]: r["days"] for r in calendar_view.yutai_schedule(with_price=False)
+                          if r["code"] in favs and r["days"] <= yd}
+        except Exception:
+            yutai_days = {}
+        try:
+            ed = getattr(config, "EARNINGS_REMIND_DAYS", 14)
+            earn_days = {r["code"]: r["days"] for r in calendar_view.earnings_schedule(favs)
+                         if r["days"] <= ed}
+        except Exception:
+            earn_days = {}
         for code in favs:
             df = get_price(code)
             if df is None or len(df) < 80:   # SMA75 を出せる行数が必要
@@ -230,11 +244,18 @@ if page == "🔎 今ここ！":
             cm = "" if code.endswith(".T") else "$"
             zcls = "up" if zone == "安値圏" else ("down" if zone == "高値圏" else "")
             name = UNIVERSE.get(code, code.replace(".T", ""))
+            badges = []
+            if code in yutai_days:
+                badges.append(f'<span class="up">🎁 優待まであと{yutai_days[code]}日</span>')
+            if code in earn_days:
+                badges.append(f'<span class="down">📅 決算まであと{earn_days[code]}日</span>')
+            badge_line = f'<div class="sc-foot">{" ／ ".join(badges)}</div>' if badges else ""
             st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">⭐ {name}（{code}）</span>
     <span class="m-value {scls}" style="font-size:.95rem">{status}</span></div>
   <div class="sc-foot">{cm}{price:,.0f} ／ RSI {rsi:.0f} ／ 1年レンジ <span class="{zcls}">{pos:.0f}%（{zone}）</span></div>
+  {badge_line}
 </div>
 """, unsafe_allow_html=True)
         st.divider()
@@ -807,6 +828,48 @@ if page == "🗓️ 予定":
   {price_line}
 </div>
 """, unsafe_allow_html=True)
+
+    # --- 分割買いシミュレーター ---
+    with st.expander("🧮 分割買いシミュレーター（安く仕込む計画）"):
+        st.caption("一度に買わず、下げるたびに分けて買うと平均取得単価を下げられます。"
+                   "計画を入れると、各回の価格・株数・必要額と平均取得単価が出ます（あくまで試算）。")
+        # 既定の開始価格は優待銘柄の現在値（無ければ1300）
+        def_price = next((float(r["price"]) for r in yrows if r.get("price")), 1300.0)
+        s1, s2 = st.columns(2)
+        total_sh = s1.number_input("目標の合計株数", min_value=1, value=100, step=10, key="sim_total")
+        n_buys = s2.number_input("分ける回数", min_value=1, max_value=10, value=3, step=1, key="sim_n")
+        s3, s4 = st.columns(2)
+        start_p = s3.number_input("開始価格（円）", min_value=1.0, value=round(def_price, 1),
+                                  step=10.0, key="sim_start")
+        step_pct = s4.number_input("1回ごとの下げ幅（%）", min_value=0.0, value=5.0, step=1.0,
+                                   key="sim_step")
+        n_buys = int(n_buys); total_sh = int(total_sh)
+        # 株数をできるだけ均等に配分（端数は最初の回に寄せる）
+        base = total_sh // n_buys
+        rem = total_sh - base * n_buys
+        plan, tot_cost, tot_sh = [], 0.0, 0
+        for i in range(n_buys):
+            sh = base + (1 if i < rem else 0)
+            price = start_p * (1 - step_pct / 100 * i)
+            cost = price * sh
+            plan.append((i + 1, price, sh, cost))
+            tot_cost += cost; tot_sh += sh
+        avg = tot_cost / tot_sh if tot_sh else 0
+        rows_html = "".join(
+            f'<div class="sc-foot">第{i}回：¥{price:,.0f} × {sh}株 ＝ ¥{cost:,.0f}</div>'
+            for i, price, sh, cost in plan)
+        lump = start_p * total_sh
+        saved = lump - tot_cost
+        st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  {rows_html}
+  <div class="sc-top" style="margin-top:8px"><span class="sc-name" style="font-size:.95rem">平均取得単価</span>
+    <span class="m-value up" style="font-size:1rem">¥{avg:,.0f}</span></div>
+  <div class="sc-foot">合計 {tot_sh}株 ／ 必要額 ¥{tot_cost:,.0f}</div>
+  <div class="sc-foot">一括(¥{start_p:,.0f}×{total_sh}株=¥{lump:,.0f})より <span class="up">¥{saved:,.0f} 安く</span> 仕込める試算</div>
+</div>
+""", unsafe_allow_html=True)
+        st.caption("※実際にその価格まで下がる保証はありません。優待狙いは権利付最終日までに必要株数を揃える点に注意。")
 
     # --- 決算カレンダー ---
     st.markdown("##### 📅 決算カレンダー（お気に入り＋保有）")

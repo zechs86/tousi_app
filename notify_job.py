@@ -423,8 +423,26 @@ def main():
         if ai:
             ai_part = f"\n🤖 {ai}"
 
+    # --- 一目サマリー行(件数と最短の優待残日数) ---
+    hdr = [f"🟢買い{len(hits)}"]
+    if dip_n:
+        hdr.append(f"押し目{dip_n}")
+    try:
+        import calendar_view
+        ymin = min((r["days"] for r in calendar_view.yutai_schedule(with_price=False)), default=None)
+    except Exception:
+        ymin = None
+    if yutai_part and ymin is not None:
+        hdr.append(f"🎁優待{ymin}日")
+    if earn_part:
+        en = len([ln for ln in earn.split("\n") if ln.strip()])
+        hdr.append(f"📅決算{en}")
+    if risks:
+        hdr.append(f"⚠️リスク{len(risks)}")
+    header_line = "　" + " ・ ".join(hdr)
+
     # --- 並び順: あなたの目標に直結する情報を先頭へ(末尾が切り捨てられても残るように) ---
-    parts = [prefix.rstrip("】") + "】"]
+    parts = [prefix.rstrip("】") + "】", header_line]
     for p in (yutai_part, dip_part, earn_part, buy_part, risk_part, ai_part):
         if p:
             parts.append(p)
