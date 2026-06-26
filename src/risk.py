@@ -15,6 +15,7 @@ from universe import UNIVERSE
 DROP_1D = -5.0     # 1日で-5%以上の下落 = 急落
 DROP_5D = -10.0    # 直近5日で-10%以上の下落 = 短期暴落
 VOL_SPIKE = 1.8    # 出来高が20日平均の1.8倍以上 かつ 下落 = 売り圧力
+GAP_DOWN = -3.0    # 寄り付きが前日終値より-3%以上低い = ギャップダウン(悪材料の可能性)
 
 
 def _analyze(code, name, df):
@@ -23,28 +24,39 @@ def _analyze(code, name, df):
         return None
     close = float(df["Close"].iloc[-1])
     prev = float(df["Close"].iloc[-2])
+    open_today = float(df["Open"].iloc[-1])
     chg_1d = (close / prev - 1) * 100
     base_5d = float(df["Close"].iloc[-6]) if len(df) >= 6 else prev
     chg_5d = (close / base_5d - 1) * 100
     vol_avg = float(df["Volume"].iloc[-21:-1].mean())
     vol_today = float(df["Volume"].iloc[-1])
     vol_ratio = (vol_today / vol_avg) if vol_avg else 0.0
+    gap = (open_today / prev - 1) * 100 if prev else 0.0
+    # 期間内(約3ヶ月)の最安値を更新したか
+    period_low = float(df["Close"].min())
+    new_low = close <= period_low * 1.001
 
     reason = None
     if chg_1d <= DROP_1D:
         reason = f"急落 {chg_1d:.1f}%"
     elif chg_5d <= DROP_5D:
         reason = f"5日で{chg_5d:.1f}%"
+    elif new_low and chg_1d < 0:
+        reason = "約3ヶ月の安値更新"
+    elif gap <= GAP_DOWN:
+        reason = f"寄りで{gap:.1f}%のギャップ下げ"
     elif vol_ratio >= VOL_SPIKE and chg_1d < 0:
         reason = f"出来高急増({vol_ratio:.1f}倍)で下落"
     if reason is None:
         return None
 
     is_jp = code.endswith(".T")
+    # 並べ替え用の深刻度: 下げ幅・ギャップ・新安値(=10点)の最大
+    severity = max(abs(min(chg_1d, chg_5d)), abs(min(gap, 0)), 10.0 if new_low else 0.0)
     return {
         "code": code, "name": name, "price": close,
         "chg_1d": round(chg_1d, 1), "chg_5d": round(chg_5d, 1),
-        "reason": reason, "severity": abs(min(chg_1d, chg_5d)), "is_jp": is_jp,
+        "reason": reason, "severity": severity, "is_jp": is_jp,
     }
 
 

@@ -223,6 +223,16 @@ if page == "🔎 今ここ！":
                          if r["days"] <= ed}
         except Exception:
             earn_days = {}
+        # 各お気に入りの最新の適時開示(TDnet)を1件
+        try:
+            import tdnet
+            latest_disc = {}
+            for c in favs:
+                ds = tdnet.fetch_disclosures(c, limit=1)
+                if ds:
+                    latest_disc[c] = ds[0]
+        except Exception:
+            latest_disc = {}
         for code in favs:
             df = get_price(code)
             if df is None or len(df) < 80:   # SMA75 を出せる行数が必要
@@ -250,12 +260,20 @@ if page == "🔎 今ここ！":
             if code in earn_days:
                 badges.append(f'<span class="down">📅 決算まであと{earn_days[code]}日</span>')
             badge_line = f'<div class="sc-foot">{" ／ ".join(badges)}</div>' if badges else ""
+            disc_line = ""
+            d = latest_disc.get(code)
+            if d:
+                dmark = "⭐" if d["important"] else "📑"
+                dtitle = d["title"][:28] + ("…" if len(d["title"]) > 28 else "")
+                dlink = f'<a href="{d["url"]}" target="_blank" style="color:inherit">{dtitle}</a>' if d.get("url") else dtitle
+                disc_line = f'<div class="sc-foot">{dmark} 開示: {dlink}（{d["date"][:10]}）</div>'
             st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">⭐ {name}（{code}）</span>
     <span class="m-value {scls}" style="font-size:.95rem">{status}</span></div>
   <div class="sc-foot">{cm}{price:,.0f} ／ RSI {rsi:.0f} ／ 1年レンジ <span class="{zcls}">{pos:.0f}%（{zone}）</span></div>
   {badge_line}
+  {disc_line}
 </div>
 """, unsafe_allow_html=True)
         st.divider()
