@@ -49,6 +49,25 @@ def price_range(code):
         return None, None, None
 
 
+def dividend_yield_pct(code, price):
+    """配当利回り(%)を返す。取れなければ None。
+    deepdive.py と同じ堅牢ロジック: 1株配当(dividendRate)÷株価 を最優先。"""
+    if not price:
+        return None
+    try:
+        import yfinance as yf
+        info = yf.Ticker(code).info or {}
+    except Exception:
+        return None
+    rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
+    if rate:
+        return rate / price * 100
+    dy = info.get("dividendYield")
+    if dy is None:
+        return None
+    return dy if dy > 1 else dy * 100   # %表記/小数表記どちらでも対応
+
+
 def yutai_schedule(today=None, with_price=True):
     """優待カレンダー。[{code,name,kenri,record,days,price,pos,zone}] を残り日数の近い順で返す。"""
     if today is None:
@@ -64,10 +83,25 @@ def yutai_schedule(today=None, with_price=True):
             continue
         row = {"code": code, "name": UNIVERSE.get(code, code.replace(".T", "")),
                "kenri": kenri, "record": record, "days": (kenri - today).days,
-               "price": None, "pos": None, "zone": None}
+               "price": None, "pos": None, "zone": None,
+               "div_yield": None, "yutai_value": None, "yutai_yield": None,
+               "total_yield": None, "unit_cost": None}
         if with_price:
             p, pos, zone = price_range(code)
             row.update(price=p, pos=pos, zone=zone)
+            if p:
+                # 単元(100株)を買うのに必要な金額を基準に利回りを出す
+                unit = 100
+                unit_cost = p * unit
+                row["unit_cost"] = unit_cost
+                row["div_yield"] = dividend_yield_pct(code, p)
+                yv = (getattr(config, "YUTAI_VALUE_YEN", {}) or {}).get(code)
+                if yv:
+                    row["yutai_value"] = yv
+                    row["yutai_yield"] = yv / unit_cost * 100
+                # 総合利回り(配当＋優待。取れたものだけ合算)
+                tot = (row["div_yield"] or 0) + (row["yutai_yield"] or 0)
+                row["total_yield"] = tot if (row["div_yield"] is not None or row["yutai_yield"]) else None
         rows.append(row)
     rows.sort(key=lambda r: r["days"])
     return rows

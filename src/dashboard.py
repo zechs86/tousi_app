@@ -727,6 +727,17 @@ if page == "🗓️ 予定":
             zcls = "up" if r["zone"] == "安値圏" else ("down" if r["zone"] == "高値圏" else "")
             price_line = (f'<div class="sc-foot">現在 {cm}{r["price"]:,.0f}／'
                           f'1年レンジ <span class="{zcls}">{r["pos"]:.0f}%（{r["zone"]}）</span></div>')
+            # 利回り(配当・優待・総合)。取れたものだけ表示。
+            yparts = []
+            if r.get("div_yield") is not None:
+                yparts.append(f'配当{r["div_yield"]:.2f}%')
+            if r.get("yutai_yield") is not None:
+                yparts.append(f'優待{r["yutai_yield"]:.2f}%')
+            if r.get("total_yield") is not None and len(yparts) >= 2:
+                yparts.append(f'<span class="up">総合{r["total_yield"]:.2f}%</span>')
+            if yparts:
+                unit_txt = f'（100株 {cm}{r["unit_cost"]:,.0f}）' if r.get("unit_cost") else ''
+                price_line += f'<div class="sc-foot">利回り {" ／ ".join(yparts)} {unit_txt}</div>'
         st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">🎁 {r['name']}（{r['code']}）</span>
