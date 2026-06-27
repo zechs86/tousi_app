@@ -9,6 +9,7 @@ import warnings
 warnings.simplefilter("ignore")
 
 import _net  # noqa: F401
+import pandas as pd
 import yfinance as yf
 from rich.console import Console
 from rich.table import Table
@@ -66,10 +67,11 @@ def scan(limit=None):
         codes = codes[:limit]
     data = yf.download(codes, period="1y", interval="1d", auto_adjust=True,
                        group_by="ticker", progress=False, threads=True)
+    multi = isinstance(data.columns, pd.MultiIndex)  # group_by='ticker'は単一銘柄でもMultiIndex
     hits = []
     for code in codes:
         try:
-            sub = (data[code] if len(codes) > 1 else data).dropna()
+            sub = (data[code] if multi else data).dropna()
             r = analyze_one(code, UNIVERSE[code], sub)
         except Exception:
             continue

@@ -7,6 +7,7 @@ import warnings
 warnings.simplefilter("ignore")
 
 import _net  # noqa: F401
+import pandas as pd
 import yfinance as yf
 
 from universe import UNIVERSE
@@ -84,10 +85,11 @@ def detect_risks(limit=None):
         codes = codes[:limit]
     data = yf.download(codes, period="3mo", interval="1d", auto_adjust=True,
                        group_by="ticker", progress=False, threads=True)
+    multi = isinstance(data.columns, pd.MultiIndex)
     out = []
     for code in codes:
         try:
-            sub = data[code] if len(codes) > 1 else data
+            sub = data[code] if multi else data
             r = _analyze(code, UNIVERSE[code], sub)
         except Exception:
             continue

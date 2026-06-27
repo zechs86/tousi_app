@@ -6,6 +6,7 @@
 #       ずっと残したい場合は将来クラウドDBを足します。手元(PC)では永続します。
 
 import re
+import json
 import datetime
 
 import store

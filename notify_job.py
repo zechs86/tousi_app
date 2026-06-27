@@ -124,7 +124,7 @@ def _watched_codes():
             codes |= set(paper.load(u).get("positions", {}))
         except Exception:
             pass
-    return codes
+    return sorted(codes)   # 順序を安定化(setのまま上限N件で切ると毎回違う銘柄になる)
 
 
 def build_earnings_reminder():
@@ -263,7 +263,8 @@ def build_disclosure_alerts():
     codes = list(_watched_codes())[:15]
     if not codes:
         return "", 0
-    seen = set(store.get_json("tdnetseen", []) or [])
+    seen_list = store.get_json("tdnetseen", []) or []   # 挿入順を保持(setにすると順序不定で取りこぼす)
+    seen = set(seen_list)
     lines, new_ids = [], []
     for code in codes:
         try:
@@ -280,7 +281,7 @@ def build_disclosure_alerts():
             lines.append(f"📑{name} {d['title']}（{d['date']}）")
             new_ids.append(did)
     if new_ids:
-        merged = (list(seen) + new_ids)[-500:]   # 直近500idだけ保持
+        merged = (seen_list + new_ids)[-500:]   # 挿入順のまま直近500idを保持
         store.set_json("tdnetseen", merged)
     return "\n".join(lines), len(lines)
 
@@ -417,7 +418,11 @@ def main():
         print("アラート通知 送信成功" if ok_a else "アラート通知 送信失敗")
 
     print("スキャン中...")
-    hits = scan()
+    try:
+        hits = scan()
+    except Exception as e:
+        print("スキャンエラー:", e)   # Yahoo一時障害でブリーフィング全体が飛ぶのを防ぐ
+        hits = []
     print("リスク検知中...")
     try:
         risks = detect_risks()

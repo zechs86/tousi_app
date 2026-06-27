@@ -62,10 +62,9 @@ def dividend_yield_pct(code, price):
     rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
     if rate:
         return rate / price * 100
-    dy = info.get("dividendYield")
-    if dy is None:
-        return None
-    return dy if dy > 1 else dy * 100   # %表記/小数表記どちらでも対応
+    # 1株配当が取れない時のみ。dividendYieldはスケールが不安定(0.7=0.7%か70%か曖昧)で
+    # 誤表示の元なので、ここでは推測せず諦める(配当利回りは出さない=安全側)。
+    return None
 
 
 def yutai_schedule(today=None, with_price=True, yutai_values=None):
