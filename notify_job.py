@@ -438,7 +438,10 @@ def main():
     else:
         buy_part = "\n🟢 買いサイン点灯なし（様子見）"
         tags = "coffee"
-    risk_part = (f"\n⚠️ 急変・下落で要注意 {len(risks)}件\n{build_risk_message(risks)}") if risks else ""
+    # ⚠️は「大きな動き=要チェック」。実証では急な下げは短期反発しやすく“売れ”の意味ではない。
+    # ただし真の暴落では下げ続けるので、判断は損切りラインで(慌てて底で売らない)。
+    risk_part = (f"\n⚠️ 急変・大きな下げ {len(risks)}件（要チェック）\n{build_risk_message(risks)}"
+                 f"\n　※急な下げは短期では反発しやすい。慌てて売らず損切りラインで判断を。") if risks else ""
     if risks:
         tags = "warning"
 
