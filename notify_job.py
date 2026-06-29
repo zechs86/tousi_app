@@ -27,6 +27,7 @@ import store
 def build_message(hits):
     """買いサインを、スマホで読みやすくまとめる。"""
     import risk
+    from universe import short_code
     bud = int(getattr(config, "RISK_PER_TRADE_YEN", 5000))
     top = hits[: config.SCAN_TOP_N]
     lines = []
@@ -39,7 +40,7 @@ def build_message(hits):
         sg = risk.suggest_shares(h["price"], spct, bud, h["is_jp"]) if spct > 0 else None
         sh_txt = f" 🛡️{sg['unit_shares']:,}株" if (sg and sg["unit_shares"] >= sg["unit"]) else ""
         lines.append(
-            f"{mark}{h['name']} {h['type']}(強{h['strength']:.0f})\n"
+            f"{mark}{h['name']}［{short_code(h['code'])}］{h['type']}(強{h['strength']:.0f})\n"
             f"　{cur}{h['price']:,.0f}／損切{cur}{h['stop']:,.0f}・利確{cur}{h['target']:,.0f} {afford}{sh_txt}"
         )
     return "\n".join(lines)
@@ -47,10 +48,11 @@ def build_message(hits):
 
 def build_risk_message(risks):
     """急変・下落で要注意の銘柄をまとめる。"""
+    from universe import short_code
     lines = []
     for r in risks[: config.SCAN_TOP_N]:
         cur = "" if r["is_jp"] else "$"
-        lines.append(f"🔻{r['name']} {r['reason']}（{cur}{r['price']:,.0f}）")
+        lines.append(f"🔻{r['name']}［{short_code(r['code'])}］{r['reason']}（{cur}{r['price']:,.0f}）")
     return "\n".join(lines)
 
 
@@ -134,10 +136,11 @@ def build_earnings_reminder():
     if not remind_days or remind_days <= 0:
         return ""
     import calendar_view
+    from universe import short_code
     codes = list(_watched_codes())[:20]   # API回数を抑えるため上限
     if not codes:
         return ""
-    lines = [f"📅{r['name']} 決算まであと{r['days']}日（{r['date']}）"
+    lines = [f"📅{r['name']}［{short_code(r['code'])}］決算まであと{r['days']}日（{r['date']}）"
              for r in calendar_view.earnings_schedule(codes) if r["days"] <= remind_days]
     return "\n".join(lines)
 
@@ -187,9 +190,9 @@ def build_dip_alerts():
         return "", 0
     import favorites
     try:
-        from universe import UNIVERSE
+        from universe import UNIVERSE, short_code
     except Exception:
-        UNIVERSE = {}
+        UNIVERSE = {}; short_code = lambda c: c.replace(".T", "")
     # 利用者を集める(ペーパー利用者 ∪ お気に入り利用者)
     users = set()
     try:
@@ -238,7 +241,7 @@ def build_dip_alerts():
             name = UNIVERSE.get(code, code.replace(".T", ""))
             if in_dip:
                 if code not in sent:
-                    lines.append(f"🟢{who}{name} 押し目買いゾーン（上昇中・RSI{rsi:.0f}）{cm}{price:,.0f}")
+                    lines.append(f"🟢{who}{name}［{short_code(code)}］押し目買いゾーン（上昇中・RSI{rsi:.0f}）{cm}{price:,.0f}")
                     sent.add(code)
                     changed = True
                     total += 1
@@ -257,9 +260,9 @@ def build_disclosure_alerts():
         return "", 0
     import tdnet
     try:
-        from universe import UNIVERSE
+        from universe import UNIVERSE, short_code
     except Exception:
-        UNIVERSE = {}
+        UNIVERSE = {}; short_code = lambda c: c.replace(".T", "")
     codes = list(_watched_codes())[:15]
     if not codes:
         return "", 0
@@ -278,7 +281,7 @@ def build_disclosure_alerts():
             did = d.get("id")
             if not did or did in seen:
                 continue
-            lines.append(f"📑{name} {d['title']}（{d['date']}）")
+            lines.append(f"📑{name}［{short_code(code)}］{d['title']}（{d['date']}）")
             new_ids.append(did)
     if new_ids:
         merged = (seen_list + new_ids)[-500:]   # 挿入順のまま直近500idを保持
@@ -294,11 +297,13 @@ def build_yutai_reminder():
     if not remind_days or remind_days <= 0:
         return ""
     import calendar_view
+    from universe import short_code
     lines = []
     for r in calendar_view.yutai_schedule():
         if r["days"] > remind_days:
             continue
         cm = "" if r["code"].endswith(".T") else "$"
+        head = f"🎁{r['name']}［{short_code(r['code'])}］優待まであと{r['days']}日（権利付最終日{r['kenri']}）"
         if r["price"] is not None:
             # 2行目に現在値・レンジ位置・配当利回り・トレンド状態を入れて“毎日ブリーフィング”化
             extras = [f"1年レンジ{r['pos']:.0f}%（{r['zone']}）"]
@@ -309,10 +314,9 @@ def build_yutai_reminder():
             trend = _trend_label(r["code"])
             if trend:
                 extras.append(trend)
-            lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）\n"
-                         f"　現在{cm}{r['price']:,.0f}・" + "・".join(extras))
+            lines.append(head + f"\n　現在{cm}{r['price']:,.0f}・" + "・".join(extras))
         else:
-            lines.append(f"🎁{r['name']} 優待まであと{r['days']}日（権利付最終日{r['kenri']}）")
+            lines.append(head)
     return "\n".join(lines)
 
 

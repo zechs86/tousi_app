@@ -11,7 +11,7 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 
-from universe import UNIVERSE
+from universe import UNIVERSE, short_code
 from indicators import add_all_indicators
 from signals import judge
 import config
@@ -319,7 +319,7 @@ if page == "🔎 今ここ！":
             st.markdown(f"""
 <div class="card signal-card {kind}">
   <div class="sc-top">
-    <span class="sc-name">{emoji} {h['name']}</span>
+    <span class="sc-name">{emoji} {h['name']}（{short_code(h['code'])}）</span>
     <span class="badge {kind}">{h['type']}</span>
   </div>
   <div class="strength">強さスコア {h['strength']:.0f} ／ RSI {h['rsi']:.0f}</div>
