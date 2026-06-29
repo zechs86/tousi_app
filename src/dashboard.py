@@ -163,6 +163,15 @@ def fmt(v, cur):
     return f"{cur}{v:,.0f}"
 
 
+def fmt_stock(c):
+    """銘柄選択の表示。「名前（証券コード）」。名前でも番号でも検索でヒットする。"""
+    return f"{UNIVERSE.get(c, c)}（{short_code(c)}）"
+
+
+# 銘柄選択ボックスの上に出す共通の検索ヒント
+SEARCH_HINT = "🔍 ボックスをタップして、名前か証券コード（例: イオン / 8267 / AAPL）を入力すると絞り込めます。"
+
+
 # ===== ヒーロー =====
 st.markdown("""
 <div class="hero">
@@ -374,9 +383,10 @@ if page == "📊 銘柄分析":
                 st.rerun()
 
     st.session_state.setdefault("chart_sel", "8267.T" if "8267.T" in codes else codes[0])
+    st.caption(SEARCH_HINT)
     cc1, cc2 = st.columns([4, 1])
-    code = cc1.selectbox("銘柄を選ぶ", options=codes, key="chart_sel",
-                         format_func=lambda c: f"{UNIVERSE[c]}（{c}）")
+    code = cc1.selectbox("銘柄を選ぶ（名前/番号で検索可）", options=codes, key="chart_sel",
+                         format_func=fmt_stock)
     is_f = favorites.is_fav(code, USER)
     if cc2.button("⭐解除" if is_f else "☆登録", key="fav_toggle", width='stretch'):
         favorites.toggle(code, USER)
@@ -577,8 +587,9 @@ if page == "🤖 AI分析":
     st.caption("選んだ成長株を、ニュース＋ファンダからClaude(AI)が評価します。実行ごとに少額のAPI費用がかかります（1回あたり数円程度）。")
 
     codes_ai = list(UNIVERSE.keys())
-    code3 = st.selectbox("分析する銘柄", options=codes_ai, index=default_idx,
-                         format_func=lambda c: f"{UNIVERSE[c]}（{c}）", key="ai_select")
+    st.caption(SEARCH_HINT)
+    code3 = st.selectbox("分析する銘柄（名前/番号で検索可）", options=codes_ai, index=default_idx,
+                         format_func=fmt_stock, key="ai_select")
     name3 = UNIVERSE[code3]
 
     if not config.ANTHROPIC_API_KEY:
@@ -850,8 +861,8 @@ if page == "💰 ペーパー":
     with c_buy:
         st.markdown("##### 🟢 買う")
         codes_b = list(UNIVERSE.keys())
-        bcode = st.selectbox("銘柄", options=codes_b, index=default_idx,
-                             format_func=lambda c: f"{UNIVERSE[c]}（{c}）", key="paper_buy_sel")
+        bcode = st.selectbox("銘柄（名前/番号で検索可）", options=codes_b, index=default_idx,
+                             format_func=fmt_stock, key="paper_buy_sel")
         bp = last_price(bcode)
         cur_b = "" if bcode.endswith(".T") else "$"
         if bp:
@@ -941,8 +952,9 @@ if page == "📌 見張り":
 
     # 登録/更新フォーム
     with st.expander("➕ 見張りに銘柄を追加 / ラインを変更", expanded=not hold):
-        hcode = st.selectbox("銘柄", options=codes,
-                             format_func=lambda c: f"{UNIVERSE[c]}（{short_code(c)}）", key="hold_sel")
+        st.caption(SEARCH_HINT)
+        hcode = st.selectbox("銘柄（名前/番号で検索可）", options=codes,
+                             format_func=fmt_stock, key="hold_sel")
         hp = last_price(hcode)
         hcur = "" if hcode.endswith(".T") else "$"
         if hp:
@@ -1142,8 +1154,9 @@ if page == "🗓️ 予定":
 
 # ============ ページ: ニュース ============
 if page == "📰 ニュース":
-    code2 = st.selectbox("ニュースを見る銘柄", options=codes, index=default_idx,
-                         format_func=lambda c: f"{UNIVERSE[c]}（{c}）", key="news_select")
+    st.caption(SEARCH_HINT)
+    code2 = st.selectbox("ニュースを見る銘柄（名前/番号で検索可）", options=codes, index=default_idx,
+                         format_func=fmt_stock, key="news_select")
     name2 = UNIVERSE[code2]
     with st.spinner("ニュース取得中…"):
         import news as news_mod
