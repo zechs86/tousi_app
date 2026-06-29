@@ -174,7 +174,7 @@ st.markdown("""
 # ===== ページ移動ナビ(タブ風) =====
 # 💬AI相談は従量課金のため AI_CHAT_ENABLED=True の時だけ表示(getattrで安全に)。
 CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
-PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "🗓️ 予定", "📰 ニュース", "⚙️ 設定"]
+PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "📌 見張り", "🗓️ 予定", "📰 ニュース", "⚙️ 設定"]
 
 # 他のボタンからのページ移動要求(_goto)を、ナビ生成前に反映
 if "_goto" in st.session_state:
@@ -928,6 +928,73 @@ if page == "💰 ペーパー":
     if st.button("🗑️ ペーパー口座をリセット", key="paper_reset"):
         paper.reset(USER)
         st.rerun()
+
+# ============ ページ: 見張り（実保有の利確/損切りアラート） ============
+if page == "📌 見張り":
+    import holdings
+    st.markdown("#### 📌 見張り（実保有の利確🎯・損切り🛑アラート）")
+    st.caption("実際に買った銘柄の利確/損切りラインを登録すると、株価が到達した時にスマホ通知が届きます。"
+               "かぶミニ等で自動損切りができない分を“通知で見張る”ための機能です。"
+               "※注文はしません。通知を見てご自身で売買してください。")
+
+    hold = holdings.load(USER)
+
+    # 登録/更新フォーム
+    with st.expander("➕ 見張りに銘柄を追加 / ラインを変更", expanded=not hold):
+        hcode = st.selectbox("銘柄", options=codes,
+                             format_func=lambda c: f"{UNIVERSE[c]}（{short_code(c)}）", key="hold_sel")
+        hp = last_price(hcode)
+        hcur = "" if hcode.endswith(".T") else "$"
+        if hp:
+            st.caption(f"現在値 {hcur}{hp:,.0f}")
+        ex = hold.get(hcode, {})
+        h1, h2 = st.columns(2)
+        htgt = h1.number_input("🎯 利確ライン（0で無し）", min_value=0.0, step=10.0,
+                               value=float(ex.get("target", 0)), key="hold_tgt")
+        hstp = h2.number_input("🛑 損切りライン（0で無し）", min_value=0.0, step=10.0,
+                               value=float(ex.get("stop", 0)), key="hold_stop")
+        if st.button("💾 見張りに登録/更新", width='stretch', key="hold_save"):
+            holdings.set_line(USER, hcode, UNIVERSE.get(hcode, hcode), htgt, hstp)
+            st.success(f"{UNIVERSE.get(hcode, hcode)} を見張りに登録しました。"); st.rerun()
+
+    # 見張り中リスト
+    if not hold:
+        st.info("まだ見張り銘柄がありません。上の「➕」から登録してください。")
+    else:
+        st.markdown("##### 見張り中")
+        watch_prices = {c: last_price(c) for c in hold}
+        for code, ln in hold.items():
+            cur = watch_prices.get(code)
+            cm = "" if code.endswith(".T") else "$"
+            name = ln.get("name", code)
+            tgt, stp = ln.get("target", 0), ln.get("stop", 0)
+            cur_txt = f"{cm}{cur:,.0f}" if cur else "—"
+            rows = ""
+            if tgt:
+                if cur and cur >= tgt:
+                    rows += f'<div class="sc-foot" style="color:{UP}">🎯 利確 {cm}{tgt:,.0f} 到達！</div>'
+                elif cur:
+                    rows += f'<div class="sc-foot">🎯 利確 {cm}{tgt:,.0f}（あと+{(tgt/cur-1)*100:.1f}%）</div>'
+                else:
+                    rows += f'<div class="sc-foot">🎯 利確 {cm}{tgt:,.0f}</div>'
+            if stp:
+                if cur and cur <= stp:
+                    rows += f'<div class="sc-foot" style="color:{DOWN}">🛑 損切り {cm}{stp:,.0f} 到達！</div>'
+                elif cur:
+                    rows += f'<div class="sc-foot">🛑 損切り {cm}{stp:,.0f}（あと-{(1-stp/cur)*100:.1f}%）</div>'
+                else:
+                    rows += f'<div class="sc-foot">🛑 損切り {cm}{stp:,.0f}</div>'
+            st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">📌 {name}（{short_code(code)}）</span>
+    <span class="m-value">{cur_txt}</span></div>
+  {rows}
+</div>
+""", unsafe_allow_html=True)
+            if st.button(f"🗑️ {name} を見張りから外す", key=f"hold_rm_{code}", width='stretch'):
+                holdings.remove(USER, code)
+                st.rerun()
+        st.caption("※朝夜の通知で、到達/接近したラインをお知らせします（最優先の別通知）。")
 
 # ============ ページ: 予定（優待・決算カレンダー） ============
 if page == "🗓️ 予定":

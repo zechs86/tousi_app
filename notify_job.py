@@ -395,6 +395,76 @@ def build_paper_alerts():
     return "\n".join(lines), len(lines)
 
 
+def build_holding_alerts():
+    """実保有の見張りリスト(holdings)が利確🎯/損切り🛑ラインに到達/接近したら通知。
+    かぶミニ等で自動損切りできない分を“アラート型”で補う。戻り値: (メッセージ, 件数)。"""
+    import holdings
+    from universe import short_code
+    near_pct = getattr(config, "NEAR_ALERT_PCT", 0) or 0
+    _RANK = {None: 0, "near": 1, "reached": 2}
+    # 見張り中の利用者を集める
+    users = set()
+    try:
+        for k in store.list_keys("hold:*"):
+            if k.startswith("hold:"):
+                users.add(k[len("hold:"):])
+            elif k.startswith("hold_"):
+                users.add(k[len("hold_"):])
+    except Exception:
+        pass
+    if not users:
+        return "", 0
+    # 利用者→見張り銘柄、全コード
+    user_items, allcodes = {}, set()
+    for u in users:
+        d = holdings.load(u)
+        if d:
+            user_items[u] = d
+            allcodes |= set(d.keys())
+    if not allcodes:
+        return "", 0
+    prices = _fetch_prices(allcodes)
+    lines = []
+    for u, items in user_items.items():
+        skey = f"holdsent:{u}"
+        sent = store.get_json(skey, {}) or {}
+        changed = False
+        who = "" if u == "guest" else f"[{u}] "
+        for code, ln in items.items():
+            cur = prices.get(code)
+            if cur is None:
+                continue
+            cm = "" if code.endswith(".T") else "$"
+            name = ln.get("name", code)
+            for kind, level, icon, word in (
+                    ("target", ln.get("target", 0), "🎯", "利確"),
+                    ("stop", ln.get("stop", 0), "🛑", "損切り")):
+                key = f"{code}:{kind}"
+                status = _level_status(cur, level, kind, near_pct)
+                prev = sent.get(key)
+                if status is None:
+                    if prev is not None:
+                        sent.pop(key, None)
+                        changed = True
+                    continue
+                if _RANK[status] > _RANK.get(prev, 0):
+                    if status == "reached":
+                        lines.append(f"{icon}{who}{name}［{short_code(code)}］{word}ライン到達！ "
+                                     f"{cm}{cur:,.0f}（{word}{cm}{level:,.0f}）")
+                    else:
+                        rem = (level / cur - 1) * 100 if kind == "target" else (1 - level / cur) * 100
+                        lines.append(f"{icon}{who}{name}［{short_code(code)}］もうすぐ{word}"
+                                     f"（あと{abs(rem):.1f}%） {cm}{cur:,.0f}")
+                    sent[key] = status
+                    changed = True
+                elif status != prev:
+                    sent[key] = status
+                    changed = True
+        if changed:
+            store.set_json(skey, sent)
+    return "\n".join(lines), len(lines)
+
+
 def main():
     try:
         import appconfig
@@ -411,13 +481,24 @@ def main():
     try:
         alert_msg, alert_n = build_paper_alerts()
     except Exception as e:
-        print("到達チェックエラー:", e)
+        print("到達チェックエラー(ペーパー):", e)
         alert_msg, alert_n = "", 0
-    if alert_n:
-        amsg = "🔔【利確/損切り 到達アラート】\n" + alert_msg + "\n\n※ペーパーのライン到達です。実弾の判断はご自身で。"
+    try:
+        hold_msg, hold_n = build_holding_alerts()
+    except Exception as e:
+        print("到達チェックエラー(実保有):", e)
+        hold_msg, hold_n = "", 0
+    if alert_n or hold_n:
+        parts_a = ["🔔【利確/損切り 到達アラート】"]
+        if hold_n:
+            parts_a.append("📌 実保有の見張り\n" + hold_msg)
+        if alert_n:
+            parts_a.append("📝 ペーパー\n" + alert_msg)
+        parts_a.append("※ライン到達のお知らせ。実際の売買・判断はご自身で。")
+        amsg = "\n".join(parts_a)
         if app_url:
             amsg += f"\n\n📱 アプリを開く: {app_url}"
-        ok_a = send_push(amsg, title=f"Tousi ALERT x{alert_n}", tags="rotating_light",
+        ok_a = send_push(amsg, title=f"Tousi ALERT x{alert_n + hold_n}", tags="rotating_light",
                          priority="high", topic=topic, click=(app_url or None))
         print("アラート通知 送信成功" if ok_a else "アラート通知 送信失敗")
 
