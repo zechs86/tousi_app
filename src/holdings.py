@@ -36,18 +36,24 @@ def save(d, user="guest"):
     store.set_json(_key(user), d)
 
 
-def set_line(user, code, name, target, stop):
-    """銘柄の利確/損切りラインを登録/更新。target/stop は 0以下で「そのラインなし」。
-    両方0なら銘柄ごと見張りから削除。戻り値: 更新後 dict。"""
+def set_line(user, code, name, target, stop, trail=0):
+    """銘柄の利確/損切りラインを登録/更新。target/stop/trail は 0以下で「なし」。
+    trail = トレーリングストップの下げ幅(%)。高値(peak)から trail% 下げたら通知。
+    3つとも0なら銘柄ごと見張りから削除。戻り値: 更新後 dict。"""
     d = load(user)
     target = float(target or 0)
     stop = float(stop or 0)
-    if target <= 0 and stop <= 0:
+    trail = float(trail or 0)
+    if target <= 0 and stop <= 0 and trail <= 0:
         d.pop(code, None)
     else:
+        prev = d.get(code, {})
         d[code] = {"name": name or UNIVERSE.get(code, code),
                    "target": target if target > 0 else 0,
-                   "stop": stop if stop > 0 else 0}
+                   "stop": stop if stop > 0 else 0,
+                   "trail": trail if trail > 0 else 0,
+                   # 高値は維持(トレーリング用)。trailを切ったらリセット。
+                   "peak": prev.get("peak", 0) if trail > 0 else 0}
     save(d, user)
     return d
 

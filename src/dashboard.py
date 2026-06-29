@@ -953,8 +953,13 @@ if page == "📌 見張り":
                                value=float(ex.get("target", 0)), key="hold_tgt")
         hstp = h2.number_input("🛑 損切りライン（0で無し）", min_value=0.0, step=10.0,
                                value=float(ex.get("stop", 0)), key="hold_stop")
+        htrail = st.number_input("📉 トレーリングストップ（高値からの下げ%・0で無し）",
+                                 min_value=0.0, max_value=50.0, step=1.0,
+                                 value=float(ex.get("trail", 0)), key="hold_trail")
+        st.caption("💡 トレーリング＝利確価格を決めず「高値から○%下げたら売り」。上がる限り持てて、"
+                   "崩れた時だけ通知。伸ばしたい銘柄におすすめ（例: 10%）。")
         if st.button("💾 見張りに登録/更新", width='stretch', key="hold_save"):
-            holdings.set_line(USER, hcode, UNIVERSE.get(hcode, hcode), htgt, hstp)
+            holdings.set_line(USER, hcode, UNIVERSE.get(hcode, hcode), htgt, hstp, htrail)
             st.success(f"{UNIVERSE.get(hcode, hcode)} を見張りに登録しました。"); st.rerun()
 
     # 見張り中リスト
@@ -984,6 +989,17 @@ if page == "📌 見張り":
                     rows += f'<div class="sc-foot">🛑 損切り {cm}{stp:,.0f}（あと-{(1-stp/cur)*100:.1f}%）</div>'
                 else:
                     rows += f'<div class="sc-foot">🛑 損切り {cm}{stp:,.0f}</div>'
+            trail = ln.get("trail", 0)
+            if trail:
+                peak = max(float(ln.get("peak", 0) or 0), cur or 0)
+                tl = peak * (1 - trail / 100) if peak else 0
+                if cur and tl and cur <= tl:
+                    rows += f'<div class="sc-foot" style="color:{DOWN}">📉 トレーリング {trail:.0f}% 売り信号！（高値{cm}{peak:,.0f}）</div>'
+                elif cur and tl:
+                    rows += (f'<div class="sc-foot">📉 トレーリング {trail:.0f}%（高値{cm}{peak:,.0f}→売り{cm}{tl:,.0f}'
+                             f'・あと-{(1-tl/cur)*100:.1f}%）</div>')
+                else:
+                    rows += f'<div class="sc-foot">📉 トレーリング {trail:.0f}%（高値からの下げで売り）</div>'
             st.markdown(f"""
 <div class="card" style="padding:12px 16px">
   <div class="sc-top"><span class="sc-name" style="font-size:1rem">📌 {name}（{short_code(code)}）</span>

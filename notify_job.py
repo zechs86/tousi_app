@@ -430,17 +430,30 @@ def build_holding_alerts():
         sent = store.get_json(skey, {}) or {}
         changed = False
         who = "" if u == "guest" else f"[{u}] "
+        items_changed = False
         for code, ln in items.items():
             cur = prices.get(code)
             if cur is None:
                 continue
             cm = "" if code.endswith(".T") else "$"
             name = ln.get("name", code)
-            for kind, level, icon, word in (
-                    ("target", ln.get("target", 0), "🎯", "利確"),
-                    ("stop", ln.get("stop", 0), "🛑", "損切り")):
+            # トレーリングストップ: 高値(peak)を更新し、peak×(1-trail%)を動的な売りラインに
+            trail = float(ln.get("trail", 0) or 0)
+            trail_level = 0.0
+            if trail > 0:
+                peak = max(float(ln.get("peak", 0) or 0), cur)
+                if peak != ln.get("peak"):
+                    ln["peak"] = peak
+                    items_changed = True
+                trail_level = peak * (1 - trail / 100)
+            checks = [("target", ln.get("target", 0), "🎯", "利確"),
+                      ("stop", ln.get("stop", 0), "🛑", "損切り")]
+            if trail_level > 0:
+                checks.append(("trail", trail_level, "📉", "トレーリング"))
+            for kind, level, icon, word in checks:
                 key = f"{code}:{kind}"
-                status = _level_status(cur, level, kind, near_pct)
+                chk = "target" if kind == "target" else "stop"   # trailは下抜けで判定
+                status = _level_status(cur, level, chk, near_pct)
                 prev = sent.get(key)
                 if status is None:
                     if prev is not None:
@@ -448,7 +461,15 @@ def build_holding_alerts():
                         changed = True
                     continue
                 if _RANK[status] > _RANK.get(prev, 0):
-                    if status == "reached":
+                    if kind == "trail":
+                        if status == "reached":
+                            lines.append(f"📉{who}{name}［{short_code(code)}］トレーリング売り信号"
+                                         f"（高値{cm}{ln.get('peak', cur):,.0f}から-{trail:.0f}%）{cm}{cur:,.0f}")
+                        else:
+                            rem = (1 - level / cur) * 100
+                            lines.append(f"📉{who}{name}［{short_code(code)}］もうすぐトレーリング売り"
+                                         f"（あと{abs(rem):.1f}%） {cm}{cur:,.0f}")
+                    elif status == "reached":
                         lines.append(f"{icon}{who}{name}［{short_code(code)}］{word}ライン到達！ "
                                      f"{cm}{cur:,.0f}（{word}{cm}{level:,.0f}）")
                     else:
@@ -462,6 +483,12 @@ def build_holding_alerts():
                     changed = True
         if changed:
             store.set_json(skey, sent)
+        if items_changed:
+            try:
+                import holdings
+                holdings.save(items, u)   # 更新した高値(peak)を保存
+            except Exception as e:
+                print(f"peak保存エラー({u}):", e)
     return "\n".join(lines), len(lines)
 
 
