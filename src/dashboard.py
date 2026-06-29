@@ -12,7 +12,14 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 
-from universe import UNIVERSE, short_code
+from universe import UNIVERSE
+try:
+    from universe import short_code
+except ImportError:
+    # クラウドが古い universe モジュールをプロセスにキャッシュしていると short_code が
+    # 見えずImportErrorになることがある。その場合でもアプリが落ちないようここで定義。
+    def short_code(code):
+        return code[:-2] if code.endswith(".T") else code
 from indicators import add_all_indicators
 from signals import judge
 import config
