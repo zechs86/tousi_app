@@ -340,8 +340,8 @@ if page == "🔎 今ここ！":
   {risk_line}
 </div>
 """, unsafe_allow_html=True)
-            if st.button(f"📝 {h['name']}をペーパーで買う準備", key=f"toscanbuy_{h['code']}",
-                         width='stretch'):
+            b1, b2 = st.columns([3, 2])
+            if b1.button("📝 ペーパーで買う準備", key=f"toscanbuy_{h['code']}", width='stretch'):
                 sh = 100 if h["is_jp"] else 1
                 st.session_state["paper_prefill"] = {
                     "code": h["code"], "name": h["name"], "shares": sh,
@@ -350,6 +350,13 @@ if page == "🔎 今ここ！":
                 st.session_state["paper_buy_sel"] = h["code"]
                 st.session_state["paper_buy_sh"] = sh
                 st.session_state["_goto"] = "💰 ペーパー"  # ペーパーへ移動
+                st.rerun()
+            # ⭐ お気に入りの登録/解除(その場でトグル)
+            is_fav_now = h["code"] in favs
+            fav_label = "⭐ 登録済" if is_fav_now else "☆ お気に入り"
+            if b2.button(fav_label, key=f"scanfav_{h['code']}", width='stretch'):
+                favorites.toggle(h["code"], USER)
+                st.toast(("⭐お気に入りから外しました: " if is_fav_now else "⭐お気に入りに追加: ") + h["name"])
                 st.rerun()
 
 # ============ ページ: 銘柄分析 ============
