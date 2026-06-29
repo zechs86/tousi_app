@@ -1,4 +1,5 @@
 # dashboard.py 【ブラウザで見る投資ダッシュボード(スマホ対応・ネオン調デザイン)】
+# (クラウドのモジュールキャッシュ対策で、クリーン再デプロイを促すための更新)
 # 起動: dashboard.bat をダブルクリック / または
 #   .\.venv\Scripts\streamlit run src\dashboard.py
 # ブラウザが開きます。同じWiFiのスマホからは http://(PCのIP):8501 で見られます。
