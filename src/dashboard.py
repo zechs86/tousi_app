@@ -183,7 +183,7 @@ st.markdown("""
 # ===== ページ移動ナビ(タブ風) =====
 # 💬AI相談は従量課金のため AI_CHAT_ENABLED=True の時だけ表示(getattrで安全に)。
 CHAT_ON = bool(getattr(config, "AI_CHAT_ENABLED", False))
-PAGES = ["🔎 今ここ！", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "📌 見張り", "🗓️ 予定", "📰 ニュース", "⚙️ 設定"]
+PAGES = ["🔎 今ここ！", "⭐ お気に入り", "📊 銘柄分析", "🤖 AI分析"] + (["💬 AI相談"] if CHAT_ON else []) + ["💰 ペーパー", "📌 見張り", "🗓️ 予定", "📰 ニュース", "⚙️ 設定"]
 
 # 他のボタンからのページ移動要求(_goto)を、ナビ生成前に反映
 if "_goto" in st.session_state:
@@ -366,6 +366,66 @@ if page == "🔎 今ここ！":
             if b2.button(fav_label, key=f"scanfav_{h['code']}", width='stretch'):
                 favorites.toggle(h["code"], USER)
                 st.toast(("⭐お気に入りから外しました: " if is_fav_now else "⭐お気に入りに追加: ") + h["name"])
+                st.rerun()
+            # 📌 この候補の損切り/利確ラインで見張りに登録
+            import holdings as _hold
+            cm_s = "" if h["is_jp"] else "$"
+            if st.button(f"📌 見張りに登録（損切{cm_s}{round(h['stop']):,}・利確{cm_s}{round(h['target']):,}）",
+                         key=f"scanhold_{h['code']}", width='stretch'):
+                _hold.set_line(USER, h["code"], h["name"], round(h["target"]), round(h["stop"]))
+                st.toast(f"📌見張りに登録: {h['name']}（損切/利確ライン付き）")
+                st.rerun()
+
+# ============ ページ: お気に入り一覧 ============
+if page == "⭐ お気に入り":
+    import favorites
+    import holdings as _hold
+    st.markdown("#### ⭐ お気に入り一覧")
+    favs2 = favorites.load(USER)
+    if not favs2:
+        st.info("お気に入りがまだありません。🔎今ここ!や📊銘柄分析の「☆お気に入り」ボタンで登録できます。")
+    else:
+        st.caption(f"{len(favs2)}銘柄を登録中。各銘柄の今の状態と、分析/見張り/解除のショートカット。")
+        held_codes = list(_hold.load(USER).keys())
+        for code in favs2:
+            name = UNIVERSE.get(code, code)
+            cm = "" if code.endswith(".T") else "$"
+            df = get_price(code)
+            if df is not None and len(df) >= 80:
+                last = add_all_indicators(df).iloc[-1]
+                price = float(last["Close"]); rsi = float(last["RSI"])
+                uptrend = bool(last["SMA25"] > last["SMA75"])
+                lo, hi = float(df["Close"].min()), float(df["Close"].max())
+                pos = (price - lo) / (hi - lo) * 100 if hi != lo else 50
+                zone = "安値圏" if pos <= 30 else ("高値圏" if pos >= 70 else "中間")
+                in_dip = uptrend and rsi <= getattr(config, "DIP_RSI", 40)
+                status, scls = ("🟢 押し目買いゾーン", "up") if in_dip else \
+                    (("↗ 上昇トレンド", "up") if uptrend else ("↘ 下降（待ち）", "down"))
+                zcls = "up" if zone == "安値圏" else ("down" if zone == "高値圏" else "")
+                info_line = (f'<div class="sc-foot">{cm}{price:,.0f} ／ RSI {rsi:.0f} ／ '
+                             f'1年レンジ <span class="{zcls}">{pos:.0f}%（{zone}）</span></div>')
+            else:
+                status, scls, info_line = "—", "", '<div class="sc-foot">価格取得できず</div>'
+            hold_mark = "（📌見張り中）" if code in held_codes else ""
+            st.markdown(f"""
+<div class="card" style="padding:12px 16px">
+  <div class="sc-top"><span class="sc-name" style="font-size:1rem">⭐ {name}（{short_code(code)}）{hold_mark}</span>
+    <span class="m-value {scls}" style="font-size:.95rem">{status}</span></div>
+  {info_line}
+</div>
+""", unsafe_allow_html=True)
+            fa, fb, fc = st.columns(3)
+            if fa.button("📊 分析", key=f"favgo_{code}", width='stretch'):
+                st.session_state["chart_sel"] = code
+                st.session_state["_goto"] = "📊 銘柄分析"
+                st.rerun()
+            if fb.button("📌 見張り", key=f"favhold_{code}", width='stretch'):
+                st.session_state["hold_sel"] = code
+                st.session_state["_goto"] = "📌 見張り"
+                st.rerun()
+            if fc.button("⭐ 解除", key=f"favdel_{code}", width='stretch'):
+                favorites.toggle(code, USER)
+                st.toast(f"お気に入りから外しました: {name}")
                 st.rerun()
 
 # ============ ページ: 銘柄分析 ============
