@@ -1020,14 +1020,16 @@ if page == "📌 見張り":
         if hp:
             st.caption(f"現在値 {hcur}{hp:,.0f}")
         ex = hold.get(hcode, {})
+        # 入力欄のキーは銘柄ごとに分ける(固定キーだと銘柄を切り替えても前の値が残り、
+        # 0のまま保存→その銘柄が見張りから消える事故になるため)
         h1, h2 = st.columns(2)
         htgt = h1.number_input("🎯 利確ライン（0で無し）", min_value=0.0, step=10.0,
-                               value=float(ex.get("target", 0)), key="hold_tgt")
+                               value=float(ex.get("target", 0)), key=f"hold_tgt_{hcode}")
         hstp = h2.number_input("🛑 損切りライン（0で無し）", min_value=0.0, step=10.0,
-                               value=float(ex.get("stop", 0)), key="hold_stop")
+                               value=float(ex.get("stop", 0)), key=f"hold_stop_{hcode}")
         htrail = st.number_input("📉 トレーリングストップ（高値からの下げ%・0で無し）",
                                  min_value=0.0, max_value=50.0, step=1.0,
-                                 value=float(ex.get("trail", 0)), key="hold_trail")
+                                 value=float(ex.get("trail", 0)), key=f"hold_trail_{hcode}")
         st.caption("💡 トレーリング＝利確価格を決めず「高値から○%下げたら売り」。上がる限り持てて、"
                    "崩れた時だけ通知。伸ばしたい銘柄におすすめ（例: 10%）。")
         if st.button("💾 見張りに登録/更新", width='stretch', key="hold_save"):
