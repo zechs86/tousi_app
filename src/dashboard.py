@@ -159,6 +159,13 @@ def get_info(code):
         return {}
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_financials(code):
+    """バランスシート/損益の5期サマリ。取得失敗時は None(キャッシュ30分)。"""
+    import fundamentals
+    return fundamentals.financial_summary(code)
+
+
 def fmt(v, cur):
     return f"{cur}{v:,.0f}"
 
@@ -617,6 +624,30 @@ if page == "📊 銘柄分析":
 
         rg_t, rg_c = _fmt_g(rg)
         eg_t, eg_c = _fmt_g(eg)
+
+        # 追加の財務指標(.infoから・追加通信なし)。比率は小数で来るので%へ。
+        import fundamentals
+        em = fundamentals.extra_metrics(info)
+
+        def _pct(v, d=1):
+            return f"{v*100:.{d}f}%" if v is not None else "—"
+
+        roe_t = _pct(em.get("roe"))
+        opm_t = _pct(em.get("op_margin"))
+        payout_t = _pct(em.get("payout"), 0)
+
+        # 自己資本比率は最新期のBSから(無ければ—)。
+        fin_sum = get_financials(code)
+        eqr_latest = None
+        if fin_sum and fin_sum.get("equity_ratio"):
+            for v in fin_sum["equity_ratio"]:
+                if v is not None:
+                    eqr_latest = v
+                    break
+        eqr_t = _pct(eqr_latest)
+        # 自己資本比率の色(目安: 40%以上で健全=緑、20%未満で注意=赤)
+        eqr_c = "up" if (eqr_latest and eqr_latest >= 0.4) else ("down" if (eqr_latest is not None and eqr_latest < 0.2) else "")
+
         st.markdown(f"""
 <div class="card">
   <div class="m-label" style="margin-bottom:8px">ファンダメンタル</div>
@@ -630,8 +661,44 @@ if page == "📊 銘柄分析":
     <div class="metric"><div class="m-label">売上成長</div><div class="m-value {rg_c}">{rg_t}</div></div>
     <div class="metric"><div class="m-label">利益成長</div><div class="m-value {eg_c}">{eg_t}</div></div>
   </div>
+  <div class="mrow" style="margin-top:8px">
+    <div class="metric"><div class="m-label">ROE（自己資本利益率）</div><div class="m-value">{roe_t}</div></div>
+    <div class="metric"><div class="m-label">自己資本比率</div><div class="m-value {eqr_c}">{eqr_t}</div></div>
+    <div class="metric"><div class="m-label">営業利益率</div><div class="m-value">{opm_t}</div></div>
+    <div class="metric"><div class="m-label">配当性向</div><div class="m-value">{payout_t}</div></div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
+
+        # --- 📑 財務(最大5期): バランスシート/損益の推移 ---
+        with st.expander("📑 財務（5期の推移）", expanded=False):
+            if not fin_sum or not fin_sum.get("periods"):
+                st.caption("この銘柄の財務データは取得できませんでした（小型株などで非公開のことがあります）。")
+            else:
+                import pandas as pd
+                fm = fundamentals.fmt_money
+                periods = fin_sum["periods"]
+
+                def _row_money(vals):
+                    return [fm(v) for v in vals]
+
+                def _row_pct(vals):
+                    return [(f"{v*100:.1f}%" if v is not None else "—") for v in vals]
+
+                table = {
+                    "総資産": _row_money(fin_sum["assets"]),
+                    "総負債": _row_money(fin_sum["liabilities"]),
+                    "自己資本": _row_money(fin_sum["equity"]),
+                    "自己資本比率": _row_pct(fin_sum["equity_ratio"]),
+                    "売上高": _row_money(fin_sum["revenue"]),
+                    "営業利益": _row_money(fin_sum["op_income"]),
+                    "純利益": _row_money(fin_sum["net_income"]),
+                }
+                dffin = pd.DataFrame(table, index=periods).T
+                dffin.columns = [c.replace("/", "/") for c in periods]
+                st.dataframe(dffin, width='stretch')
+                st.caption("💡 自己資本比率＝自己資本÷総資産。一般に40%超で財務は健全、20%未満は借入依存で注意。"
+                           "年々上がっていれば財務体質が改善中。出所: yfinance（連結・通期）。")
 
 # ============ タブ3: AI分析 ============
 def _ai_list(title, items, color):
@@ -692,6 +759,7 @@ if page == "🤖 AI分析":
             paras += _para("📊 業績・決算トレンド", result.get("earnings_take"))
             paras += _para("🏛️ 機関投資家・需給", result.get("institutional_take"))
             paras += _para("💰 割安度の所感", result.get("valuation_take"))
+            paras += _para("🏦 財務健全性・収益性", result.get("financial_take"))
             paras += _para("🎯 目標株価の所感", result.get("target_take"))
             paras += _para("⏱️ なぜ今か（タイミング）", result.get("timing"))
             paras += _para("📝 総合所感", result.get("overall"))

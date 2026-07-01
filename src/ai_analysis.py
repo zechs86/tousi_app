@@ -17,7 +17,7 @@ import config
 SYSTEM = (
     "あなたは日本株を専門とする冷静なバイサイド・アナリストです。"
     "ユーザーは投資初心者で、個別の成長株を長期目線で見極めたいと考えています。"
-    "渡された材料(株価・テクニカル・ファンダ・業績成長率・機関投資家需給・アナリスト目標・ニュース見出し)だけを根拠に、"
+    "渡された材料(株価・テクニカル・ファンダ・財務健全性・業績成長率・機関投資家需給・アナリスト目標・ニュース見出し)だけを根拠に、"
     "成長株としての魅力とリスクを率直に評価してください。"
     "重要な制約: ①これは投資助言ではなく判断材料であること。"
     "②材料に無いことを断定しない(不明なら『材料からは不明』と書く)。"
@@ -40,6 +40,7 @@ SHAPE = """{
   "risks": ["主なリスク・弱点を2〜4個(必須)"],
   "institutional_take": "機関投資家・大口の保有/需給に関する所感(1〜2文)",
   "valuation_take": "PER/PBR/配当などから見た割高・割安の所感(1〜2文)",
+  "financial_take": "財務健全性・収益性の所感(自己資本比率/ROE/利益率/CFから。安全性と稼ぐ力を1〜2文。材料が乏しければ『材料からは不明』)",
   "target_take": "目標株価の所感(アナリスト平均があれば現値との比較、無ければ妥当感を1〜2文)",
   "timing": "『なぜ今か』タイミングの所感(押し目/ブレイク/待ち を根拠つきで1〜2文)",
   "stance": "強気 / 中立 / 弱気 のいずれか1語",
@@ -92,6 +93,30 @@ def gather_inputs(code, name, df, info):
     pos = round((price - lo) / (hi - lo) * 100) if hi > lo else None
     cur = "" if str(code).endswith(".T") else "$"
 
+    # --- 財務健全性・収益性(info + BS/PLの推移) ---
+    import fundamentals
+    em = fundamentals.extra_metrics(info)
+
+    def _pc(v, d=1):
+        return round(v * 100, d) if v is not None else None
+
+    fin_sum = fundamentals.financial_summary(code)
+    eqr_latest = None
+    eqr_trend = None
+    rev_trend = None
+    if fin_sum:
+        for v in fin_sum.get("equity_ratio", []):
+            if v is not None:
+                eqr_latest = round(v * 100, 1)
+                break
+        # 自己資本比率の推移(古い順)を簡潔に。例: "40→56→64%"
+        eqr_vals = [v for v in reversed(fin_sum.get("equity_ratio", [])) if v is not None]
+        if len(eqr_vals) >= 2:
+            eqr_trend = "→".join(f"{v*100:.0f}" for v in eqr_vals) + "%"
+        rev_vals = [v for v in reversed(fin_sum.get("revenue", [])) if v is not None]
+        if len(rev_vals) >= 2:
+            rev_trend = "→".join(fundamentals.fmt_money(v) for v in rev_vals)
+
     snap = {
         "cur": cur,
         "price": round(price),
@@ -112,6 +137,17 @@ def gather_inputs(code, name, df, info):
         "target_low": round(tlow) if tlow else None,
         "num_analysts": nan,
         "reco": reco,
+        # --- 財務健全性・収益性 ---
+        "roe": _pc(em.get("roe")),
+        "roa": _pc(em.get("roa")),
+        "op_margin": _pc(em.get("op_margin")),
+        "net_margin": _pc(em.get("net_margin")),
+        "payout": _pc(em.get("payout"), 0),
+        "current_ratio": round(em["current_ratio"], 2) if em.get("current_ratio") else None,
+        "free_cashflow": fundamentals.fmt_money(em.get("free_cashflow")) if em.get("free_cashflow") else None,
+        "equity_ratio": eqr_latest,        # 最新期の自己資本比率(%)
+        "equity_ratio_trend": eqr_trend,   # 古い→新しい の推移
+        "revenue_trend": rev_trend,        # 売上高の推移
     }
 
     import news as news_mod
@@ -149,6 +185,17 @@ def build_prompt(name, code, snap, news_items):
 - 配当利回り: {_fmt(snap.get('dividend_yield'), '%')}
 - 売上成長率(前年比): {_fmt(snap.get('rev_growth'), '%')}
 - 利益成長率(前年比): {_fmt(snap.get('earn_growth'), '%')}
+
+## 財務健全性・収益性（バランスシート/損益より）
+- ROE(自己資本利益率): {_fmt(snap.get('roe'), '%')}
+- ROA(総資産利益率): {_fmt(snap.get('roa'), '%')}
+- 営業利益率: {_fmt(snap.get('op_margin'), '%')}
+- 純利益率: {_fmt(snap.get('net_margin'), '%')}
+- 自己資本比率: {_fmt(snap.get('equity_ratio'), '%')}（推移 古→新: {_fmt(snap.get('equity_ratio_trend'))}）
+- 配当性向: {_fmt(snap.get('payout'), '%')}
+- 流動比率: {_fmt(snap.get('current_ratio'), '倍')}
+- フリーキャッシュフロー: {_fmt(snap.get('free_cashflow'))}
+- 売上高の推移(古→新): {_fmt(snap.get('revenue_trend'))}
 
 ## 保有・需給（機関投資家の動向）
 - 機関投資家の保有比率: {_fmt(snap.get('inst_pct'), '%')}
