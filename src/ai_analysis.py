@@ -142,8 +142,13 @@ def gather_inputs(code, name, df, info):
         "roa": _pc(em.get("roa")),
         "op_margin": _pc(em.get("op_margin")),
         "net_margin": _pc(em.get("net_margin")),
+        "ebitda_margin": _pc(em.get("ebitda_margin")),
+        "op_cf_margin": _pc(em.get("op_cf_margin")),
         "payout": _pc(em.get("payout"), 0),
         "current_ratio": round(em["current_ratio"], 2) if em.get("current_ratio") else None,
+        "debt_to_equity": round(em["debt_to_equity"], 0) if em.get("debt_to_equity") else None,
+        "psr": round(em["psr"], 2) if em.get("psr") else None,
+        "ev_ebitda": round(em["ev_ebitda"], 1) if em.get("ev_ebitda") else None,
         "free_cashflow": fundamentals.fmt_money(em.get("free_cashflow")) if em.get("free_cashflow") else None,
         "equity_ratio": eqr_latest,        # 最新期の自己資本比率(%)
         "equity_ratio_trend": eqr_trend,   # 古い→新しい の推移
@@ -191,11 +196,18 @@ def build_prompt(name, code, snap, news_items):
 - ROA(総資産利益率): {_fmt(snap.get('roa'), '%')}
 - 営業利益率: {_fmt(snap.get('op_margin'), '%')}
 - 純利益率: {_fmt(snap.get('net_margin'), '%')}
+- EBITDA率: {_fmt(snap.get('ebitda_margin'), '%')}
+- 営業CFマージン(利益の現金化度): {_fmt(snap.get('op_cf_margin'), '%')}
 - 自己資本比率: {_fmt(snap.get('equity_ratio'), '%')}（推移 古→新: {_fmt(snap.get('equity_ratio_trend'))}）
-- 配当性向: {_fmt(snap.get('payout'), '%')}
+- 有利子負債/自己資本(D/E): {_fmt(snap.get('debt_to_equity'), '%')}
 - 流動比率: {_fmt(snap.get('current_ratio'), '倍')}
+- 配当性向: {_fmt(snap.get('payout'), '%')}
 - フリーキャッシュフロー: {_fmt(snap.get('free_cashflow'))}
 - 売上高の推移(古→新): {_fmt(snap.get('revenue_trend'))}
+
+## 割安度(バリュエーション)
+- PSR(株価売上倍率): {_fmt(snap.get('psr'), '倍')}
+- EV/EBITDA(買収目線の割安度): {_fmt(snap.get('ev_ebitda'), '倍')}
 
 ## 保有・需給（機関投資家の動向）
 - 機関投資家の保有比率: {_fmt(snap.get('inst_pct'), '%')}

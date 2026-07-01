@@ -670,10 +670,55 @@ if page == "📊 銘柄分析":
 </div>
 """, unsafe_allow_html=True)
 
-        # --- 📑 財務(最大5期): バランスシート/損益の推移 ---
-        with st.expander("📑 財務（5期の推移）", expanded=False):
+        # --- 📑 財務(詳細指標 + 最大5期のBS/PL推移) ---
+        with st.expander("📑 財務（詳細指標・5期の推移）", expanded=False):
+            # (1) 詳細指標(.infoから・割安度/収益性/安全性)
+            def _r(v, suf="", d=1):
+                return f"{v:.{d}f}{suf}" if v is not None else "—"
+
+            def _rp(v, d=1):
+                return f"{v*100:.{d}f}%" if v is not None else "—"
+
+            fm = fundamentals.fmt_money
+            st.markdown(f"""
+<div class="card">
+  <div class="m-label" style="margin-bottom:8px">📈 割安度（バリュエーション）</div>
+  <div class="mrow">
+    <div class="metric"><div class="m-label">PSR（株価売上倍率）</div><div class="m-value">{_r(em.get('psr'),'倍',2)}</div></div>
+    <div class="metric"><div class="m-label">EV/EBITDA</div><div class="m-value">{_r(em.get('ev_ebitda'),'倍',1)}</div></div>
+    <div class="metric"><div class="m-label">PEG</div><div class="m-value">{_r(em.get('peg'),'',2)}</div></div>
+    <div class="metric"><div class="m-label">予想PER</div><div class="m-value">{_r(em.get('forward_pe'),'倍',1)}</div></div>
+  </div>
+  <div class="m-label" style="margin:12px 0 8px">💪 収益性（稼ぐ力）</div>
+  <div class="mrow">
+    <div class="metric"><div class="m-label">ROA（総資産利益率）</div><div class="m-value">{_rp(em.get('roa'))}</div></div>
+    <div class="metric"><div class="m-label">純利益率</div><div class="m-value">{_rp(em.get('net_margin'))}</div></div>
+    <div class="metric"><div class="m-label">EBITDA率</div><div class="m-value">{_rp(em.get('ebitda_margin'))}</div></div>
+    <div class="metric"><div class="m-label">営業CFマージン</div><div class="m-value">{_rp(em.get('op_cf_margin'))}</div></div>
+  </div>
+  <div class="m-label" style="margin:12px 0 8px">🛡️ 安全性（財務体質）</div>
+  <div class="mrow">
+    <div class="metric"><div class="m-label">有利子負債/自己資本(D/E)</div><div class="m-value">{_r(em.get('debt_to_equity'),'%',0)}</div></div>
+    <div class="metric"><div class="m-label">流動比率</div><div class="m-value">{_r(em.get('current_ratio'),'倍',2)}</div></div>
+    <div class="metric"><div class="m-label">当座比率</div><div class="m-value">{_r(em.get('quick_ratio'),'倍',2)}</div></div>
+    <div class="metric"><div class="m-label">1株純資産(BPS)</div><div class="m-value">{_r(em.get('bps'),'円',0)}</div></div>
+  </div>
+  <div class="m-label" style="margin:12px 0 8px">💵 キャッシュ</div>
+  <div class="mrow">
+    <div class="metric"><div class="m-label">営業CF</div><div class="m-value">{fm(em.get('op_cashflow'))}</div></div>
+    <div class="metric"><div class="m-label">フリーCF</div><div class="m-value">{fm(em.get('free_cashflow'))}</div></div>
+    <div class="metric"><div class="m-label">手元現金</div><div class="m-value">{fm(em.get('total_cash'))}</div></div>
+    <div class="metric"><div class="m-label">有利子負債</div><div class="m-value">{fm(em.get('total_debt'))}</div></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+            st.caption("💡 PSR=時価総額÷売上(赤字でも測れる/高成長株向け)。EV/EBITDA=買収目線の割安度(低いほど割安・10倍前後が目安)。"
+                       "PEG=PER÷利益成長率(1未満で割安)。営業CFマージン=営業CF÷売上(利益がちゃんと現金化されているか)。")
+
+            # (2) BS/PLの5期推移
+            st.markdown('<div class="m-label" style="margin-top:8px">📊 バランスシート/損益（5期）</div>', unsafe_allow_html=True)
             if not fin_sum or not fin_sum.get("periods"):
-                st.caption("この銘柄の財務データは取得できませんでした（小型株などで非公開のことがあります）。")
+                st.caption("この銘柄の5期財務データは取得できませんでした（小型株などで非公開のことがあります）。")
             else:
                 import pandas as pd
                 fm = fundamentals.fmt_money

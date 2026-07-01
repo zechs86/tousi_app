@@ -28,23 +28,32 @@ def extra_metrics(info):
                     return v
         return None
 
+    op_cf = info.get("operatingCashflow")
+    revenue = info.get("totalRevenue")
+    op_cf_margin = (op_cf / revenue) if (op_cf and revenue) else None  # 営業CFマージン
+
     return {
         "roe": info.get("returnOnEquity"),            # 自己資本利益率(稼ぐ力/効率)
         "roa": info.get("returnOnAssets"),            # 総資産利益率
         "op_margin": info.get("operatingMargins"),    # 営業利益率
         "net_margin": info.get("profitMargins"),      # 純利益率
         "gross_margin": info.get("grossMargins"),     # 粗利率
+        "ebitda_margin": info.get("ebitdaMargins"),   # EBITDA率(本業の現金創出力)
+        "op_cf_margin": op_cf_margin,                 # 営業CFマージン(利益の現金化度)
         "payout": info.get("payoutRatio"),            # 配当性向(配当の無理のなさ)
-        "debt_to_equity": info.get("debtToEquity"),   # D/E(%表記。負債/自己資本)
+        "debt_to_equity": info.get("debtToEquity"),   # D/E(%表記。有利子負債/自己資本)
         "current_ratio": info.get("currentRatio"),    # 流動比率(短期の支払い余力)
         "quick_ratio": info.get("quickRatio"),        # 当座比率
-        "op_cashflow": info.get("operatingCashflow"), # 営業キャッシュフロー
+        "op_cashflow": op_cf,                         # 営業キャッシュフロー
         "free_cashflow": info.get("freeCashflow"),    # フリーキャッシュフロー
         "total_cash": info.get("totalCash"),          # 手元現金
         "total_debt": info.get("totalDebt"),          # 有利子負債
+        "total_revenue": revenue,                     # 売上高(直近12ヶ月)
         "bps": info.get("bookValue"),                 # 1株純資産(BPS)
         "forward_pe": info.get("forwardPE"),          # 予想PER
         "peg": info.get("pegRatio"),                  # PEG(成長を加味した割安度)
+        "psr": info.get("priceToSalesTrailing12Months"),  # PSR(株価売上倍率/高成長株の割安度)
+        "ev_ebitda": info.get("enterpriseToEbitda"),  # EV/EBITDA(買収目線の割安度)
     }
 
 
