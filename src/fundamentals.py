@@ -20,14 +20,6 @@ def extra_metrics(info):
     戻り値はすべて素の数値(比率は小数: 0.10=10%) または None。"""
     info = info or {}
 
-    def g(*keys):
-        for k in keys:
-            v = info.get(k)
-            if v not in (None, "", 0) or (v == 0 and k in info):
-                if v is not None and v != "":
-                    return v
-        return None
-
     op_cf = info.get("operatingCashflow")
     revenue = info.get("totalRevenue")
     op_cf_margin = (op_cf / revenue) if (op_cf and revenue) else None  # 営業CFマージン

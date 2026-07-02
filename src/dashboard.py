@@ -721,7 +721,6 @@ if page == "📊 銘柄分析":
                 st.caption("この銘柄の5期財務データは取得できませんでした（小型株などで非公開のことがあります）。")
             else:
                 import pandas as pd
-                fm = fundamentals.fmt_money
                 periods = fin_sum["periods"]
 
                 def _row_money(vals):
@@ -740,7 +739,6 @@ if page == "📊 銘柄分析":
                     "純利益": _row_money(fin_sum["net_income"]),
                 }
                 dffin = pd.DataFrame(table, index=periods).T
-                dffin.columns = [c.replace("/", "/") for c in periods]
                 st.dataframe(dffin, width='stretch')
                 st.caption("💡 自己資本比率＝自己資本÷総資産。一般に40%超で財務は健全、20%未満は借入依存で注意。"
                            "年々上がっていれば財務体質が改善中。出所: yfinance（連結・通期）。")
