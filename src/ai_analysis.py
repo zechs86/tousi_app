@@ -93,6 +93,12 @@ def gather_inputs(code, name, df, info):
     pos = round((price - lo) / (hi - lo) * 100) if hi > lo else None
     cur = "" if str(code).endswith(".T") else "$"
 
+    # --- イベント・流動性・値動きリスク ---
+    import checks
+    ed, ed_days = checks.next_earnings(info)
+    liq = checks.liquidity_20d(df)
+    dd = checks.drawdown(df)
+
     # --- 財務健全性・収益性(info + BS/PLの推移) ---
     import fundamentals
     em = fundamentals.extra_metrics(info)
@@ -153,6 +159,12 @@ def gather_inputs(code, name, df, info):
         "equity_ratio": eqr_latest,        # 最新期の自己資本比率(%)
         "equity_ratio_trend": eqr_trend,   # 古い→新しい の推移
         "revenue_trend": rev_trend,        # 売上高の推移
+        # --- イベント・流動性・値動き ---
+        "next_earnings": f"{ed:%Y-%m-%d}（{ed_days}日後）" if ed else None,
+        "liquidity": checks.fmt_liq(liq) if liq is not None else None,
+        "drawdown_pct": round(dd * 100, 1) if dd is not None else None,
+        "beta": round(info["beta"], 2) if info.get("beta") is not None else None,
+        "sector": checks.sector_jp(checks.sector_of(info)) if checks.sector_of(info) else None,
     }
 
     import news as news_mod
@@ -208,6 +220,13 @@ def build_prompt(name, code, snap, news_items):
 ## 割安度(バリュエーション)
 - PSR(株価売上倍率): {_fmt(snap.get('psr'), '倍')}
 - EV/EBITDA(買収目線の割安度): {_fmt(snap.get('ev_ebitda'), '倍')}
+
+## イベント・流動性・値動きリスク
+- セクター: {_fmt(snap.get('sector'))}
+- 次回決算発表: {_fmt(snap.get('next_earnings'))}（接近時はまたぎリスクに言及すること）
+- 売買代金(20日平均): {_fmt(snap.get('liquidity'))}（少なければ流動性リスクに言及）
+- 52週高値からの下落率: {_fmt(snap.get('drawdown_pct'), '%')}
+- ベータ(市場比の値動き): {_fmt(snap.get('beta'))}
 
 ## 保有・需給（機関投資家の動向）
 - 機関投資家の保有比率: {_fmt(snap.get('inst_pct'), '%')}

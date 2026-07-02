@@ -670,6 +670,43 @@ if page == "📊 銘柄分析":
 </div>
 """, unsafe_allow_html=True)
 
+        # --- ⏱️ リスク・タイミング(決算接近/下落率/ベータ/流動性) ---
+        import checks
+        ed, ed_days = checks.next_earnings(info)
+        dd = checks.drawdown(df)
+        liq = checks.liquidity_20d(df)
+        beta = info.get("beta")
+
+        ed_t = f"{ed:%m/%d}（{ed_days}日後）" if ed else "—"
+        ed_c = "down" if (ed_days is not None and ed_days <= checks.EARNINGS_WARN_DAYS) else ""
+        dd_t = f"-{dd*100:.1f}%" if dd is not None else "—"
+        dd_c = "down" if (dd is not None and dd >= 0.3) else ""
+        liq_t = checks.fmt_liq(liq)
+        liq_c = "down" if (liq is not None and liq < checks.LIQUIDITY_WARN_YEN) else ""
+        beta_t = f"{beta:.2f}" if beta is not None else "—"
+        beta_c = "down" if (beta is not None and beta >= 1.5) else ""
+
+        st.markdown(f"""
+<div class="card">
+  <div class="m-label" style="margin-bottom:8px">⏱️ リスク・タイミング</div>
+  <div class="mrow">
+    <div class="metric"><div class="m-label">次回決算</div><div class="m-value {ed_c}">{ed_t}</div></div>
+    <div class="metric"><div class="m-label">52週高値から</div><div class="m-value {dd_c}">{dd_t}</div></div>
+    <div class="metric"><div class="m-label">ベータ（市場比の動き）</div><div class="m-value {beta_c}">{beta_t}</div></div>
+    <div class="metric"><div class="m-label">売買代金（20日平均）</div><div class="m-value {liq_c}">{liq_t}</div></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+        _risk_notes = []
+        if ed_days is not None and ed_days <= checks.EARNINGS_WARN_DAYS:
+            _risk_notes.append(f"⚠️ {ed_days}日後に決算発表。またぎは株価が大きく動くことがあります。")
+        if liq is not None and liq < checks.LIQUIDITY_WARN_YEN:
+            _risk_notes.append("⚠️ 売買代金が少なめ。売りたい時に値が飛ぶことがあります。")
+        if _risk_notes:
+            st.warning(" / ".join(_risk_notes), icon="⚠️")
+        st.caption("💡 ベータ=市場全体が1%動いた時にこの株が何%動きやすいか（1.5以上は値動き激しめ）。"
+                   "52週高値からの下落が30%超なら「押し目」ではなく下落トレンドの可能性も。")
+
         # --- 📑 財務(詳細指標 + 最大5期のBS/PL推移) ---
         with st.expander("📑 財務（詳細指標・5期の推移）", expanded=False):
             # (1) 詳細指標(.infoから・割安度/収益性/安全性)
@@ -1025,6 +1062,24 @@ if page == "💰 ペーパー":
                 paper.set_target(pstate, tcode, tval, USER)
                 paper.set_stop(pstate, tcode, sval, USER)
                 st.success("利確・損切りを設定しました。"); st.rerun()
+
+        # 🧩 セクター偏りチェック(保有が同業種に集中していないか)
+        if len(pstate["positions"]) >= 2:
+            import checks
+            _prices_pf = {c: last_price(c) for c in pstate["positions"]}
+            _secs, _sec_warn = checks.portfolio_sectors(pstate["positions"], get_info, _prices_pf)
+            if _secs:
+                with st.expander("🧩 セクター構成（偏りチェック）", expanded=bool(_sec_warn)):
+                    for s in _secs:
+                        pct = s["ratio"] * 100
+                        bar = "█" * max(1, int(pct / 5))
+                        st.markdown(f'<div class="sc-foot">{checks.sector_jp(s["sector"])}'
+                                    f'　{bar} {pct:.0f}%（¥{s["value"]:,.0f}）</div>',
+                                    unsafe_allow_html=True)
+                    if _sec_warn:
+                        st.warning(_sec_warn, icon="🧩")
+                    else:
+                        st.caption("💡 特定セクターが50%を超えると同時安のリスクが高まります。今はバランスOK。")
     else:
         st.info("まだ保有なし。下の「買う」で練習を始めましょう。")
 
@@ -1060,6 +1115,26 @@ if page == "💰 ペーパー":
             st.caption(f"必要資金 ¥{bp*bsh:,.0f}")
         # 「今ここ！」から準備された銘柄なら、確定で利確/損切りも自動セット
         pf = st.session_state.get("paper_prefill")
+
+        # ✅ 買う前チェック(決算接近/流動性/下落率/損切り/資金集中)
+        if bp:
+            import checks
+            _dfb = get_price(bcode)
+            _infob = get_info(bcode)
+            # この買いが総資産(現金+保有評価額)に占める割合
+            _total = pstate["cash"] + sum(
+                (last_price(c) or p.get("avg_cost", 0)) * p.get("shares", 0)
+                for c, p in pstate["positions"].items())
+            _ratio = (bp * bsh / _total) if _total > 0 else None
+            _stop_set = bool(pf and pf["code"] == bcode) or bool(pstate.get("stops", {}).get(bcode))
+            _warns = checks.precheck(_dfb, _infob, stop_set=_stop_set, budget_ratio=_ratio)
+            if _warns:
+                _wtxt = [w["msg"] for w in _warns if w["level"] == "warn"]
+                _itxt = [w["msg"] for w in _warns if w["level"] == "info"]
+                if _wtxt:
+                    st.warning("**買う前チェック**\n\n" + "\n\n".join(_wtxt), icon="✅")
+                if _itxt:
+                    st.caption(" ／ ".join(_itxt))
         btn_label = "買う（仮想・確定）" if (pf and pf["code"] == bcode) else "買う（仮想）"
         if st.button(btn_label, width='stretch', key="paper_buy_btn"):
             if bp:
