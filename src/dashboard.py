@@ -859,6 +859,7 @@ if CHAT_ON and page == "💬 AI相談":
                 text, api, err = ai_chat.respond(
                     st.session_state.chat_api,
                     on_tool=lambda label, inp: tools_used.append(label),
+                    user=USER,
                 )
             if err:
                 st.error(err)

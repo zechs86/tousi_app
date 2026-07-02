@@ -19,8 +19,9 @@ TOOLS = [
         "name": "get_stock",
         "description": (
             "指定した銘柄の最新データを取得する。"
-            "株価・前日比・トレンド・RSI・52週レンジ位置・PER・PBR・配当利回り・"
-            "売上/利益成長率・機関投資家保有比率・アナリスト目標株価・直近ニュース見出し を返す。"
+            "株価・前日比・トレンド・RSI・52週レンジ位置・PER・PBR・PSR・EV/EBITDA・配当利回り・"
+            "売上/利益成長率・財務健全性(ROE/ROA/自己資本比率とその推移/利益率/D-E/流動比率/FCF)・"
+            "機関投資家保有比率・アナリスト目標株価・直近ニュース見出し を返す。"
             "個別銘柄について答える前に必ずこれで実データを取得すること。"
         ),
         "input_schema": {
@@ -122,6 +123,54 @@ def _tool_get_stock(inp):
     return json.dumps(snap, ensure_ascii=False)
 
 
+def _tool_portfolio(inp, user="guest"):
+    """ペーパー口座の保有・現金・含み損益・利確/損切りラインをAIに渡す形で返す。"""
+    import _net  # noqa: F401
+    import yfinance as yf
+    import paper
+
+    state = paper.load(user)
+    positions = state.get("positions", {})
+    if not positions:
+        return json.dumps({"cash": round(state.get("cash", 0)),
+                           "positions": [],
+                           "note": "保有銘柄なし(ペーパー未使用)"}, ensure_ascii=False)
+
+    out = []
+    for code, pos in positions.items():
+        cur = None
+        try:
+            df = yf.download(code, period="5d", interval="1d",
+                             auto_adjust=True, progress=False)
+            if hasattr(df.columns, "nlevels") and df.columns.nlevels > 1:
+                df.columns = df.columns.get_level_values(0)
+            df = df.dropna(subset=["Close"])
+            if not df.empty:
+                cur = float(df["Close"].iloc[-1])
+        except Exception:
+            pass
+        avg = float(pos.get("avg_cost", 0))
+        shares = int(pos.get("shares", 0))
+        pl = round((cur - avg) * shares) if cur else None
+        pl_pct = round((cur / avg - 1) * 100, 1) if (cur and avg) else None
+        out.append({
+            "code": code, "name": pos.get("name", code),
+            "shares": shares, "avg_cost": round(avg, 1),
+            "current": round(cur, 1) if cur else None,
+            "pl_yen": pl, "pl_pct": pl_pct,
+            "target": state.get("targets", {}).get(code),
+            "stop": state.get("stops", {}).get(code),
+        })
+    total_pl = sum(p["pl_yen"] for p in out if p["pl_yen"] is not None)
+    return json.dumps({
+        "user": user,
+        "cash": round(state.get("cash", 0)),
+        "start_cash": round(state.get("start_cash", 0)),
+        "total_unrealized_pl_yen": total_pl,
+        "positions": out,
+    }, ensure_ascii=False)
+
+
 def _tool_scan(inp):
     from scanner import scan
     hits = scan()
@@ -139,7 +188,7 @@ def _tool_risks(inp):
     return json.dumps({"count": len(rs), "risks": out}, ensure_ascii=False)
 
 
-def run_tool(name, inp):
+def run_tool(name, inp, user="guest"):
     try:
         if name == "get_stock":
             return _tool_get_stock(inp)
@@ -147,15 +196,18 @@ def run_tool(name, inp):
             return _tool_scan(inp)
         if name == "market_risks":
             return _tool_risks(inp)
+        if name == "get_my_portfolio":
+            return _tool_portfolio(inp, user)
         return json.dumps({"error": f"unknown tool {name}"}, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
-def respond(history, model=None, max_iters=6, on_tool=None):
+def respond(history, model=None, max_iters=6, on_tool=None, user="guest"):
     """history: [{'role':'user'/'assistant','content': ...}] を受け、ツール使用ループを回して
     最終回答テキストを返す。戻り値: (final_text, updated_history, error)。
-    on_tool(label, input_dict) があればツール呼び出し毎に通知(UIの進捗表示用)。"""
+    on_tool(label, input_dict) があればツール呼び出し毎に通知(UIの進捗表示用)。
+    user はペーパー口座の利用者名(get_my_portfolio が参照)。"""
     client = _client()
     if client is None:
         return None, history, "APIキーが未設定です。"
@@ -181,7 +233,7 @@ def respond(history, model=None, max_iters=6, on_tool=None):
                 if getattr(b, "type", "") == "tool_use":
                     if on_tool:
                         on_tool(TOOL_LABEL.get(b.name, b.name), b.input)
-                    out = run_tool(b.name, b.input)
+                    out = run_tool(b.name, b.input, user)
                     results.append({"type": "tool_result", "tool_use_id": b.id, "content": out})
             msgs.append({"role": "user", "content": results})
             continue
